@@ -2,8 +2,9 @@
 
 import open from "open";
 import { resolve, dirname } from "path";
-import { spawnPromise } from "spawn-rx";
+import { spawnPromise, spawn } from "spawn-rx";
 import { fileURLToPath } from "url";
+import { randomBytes } from "crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -18,12 +19,18 @@ async function main() {
   const mcpServerArgs = [];
   let command = null;
   let parsingFlags = true;
+  let isDev = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
 
     if (parsingFlags && arg === "--") {
       parsingFlags = false;
+      continue;
+    }
+
+    if (parsingFlags && arg === "--dev") {
+      isDev = true;
       continue;
     }
 
@@ -38,34 +45,25 @@ async function main() {
       } else {
         envVars[envVar] = "";
       }
-    } else if (!command) {
+    } else if (!command && !isDev) {
       command = arg;
-    } else {
+    } else if (!isDev) {
       mcpServerArgs.push(arg);
     }
   }
 
-  const inspectorServerPath = resolve(
-    __dirname,
-    "../..",
-    "server",
-    "build",
-    "index.js",
-  );
-
-  // Path to the client entry point
-  const inspectorClientPath = resolve(
-    __dirname,
-    "../..",
-    "client",
-    "bin",
-    "client.js",
-  );
-
   const CLIENT_PORT = process.env.CLIENT_PORT ?? "6274";
   const SERVER_PORT = process.env.SERVER_PORT ?? "6277";
 
-  console.log("Starting MCP inspector...");
+  console.log(
+    isDev
+      ? "Starting MCP inspector in development mode..."
+      : "Starting MCP inspector...",
+  );
+
+  // Generate session token for authentication
+  const sessionToken = randomBytes(32).toString("hex");
+  const authDisabled = !!process.env.DANGEROUSLY_OMIT_AUTH;
 
   const abort = new AbortController();
 
@@ -74,42 +72,150 @@ async function main() {
     cancelled = true;
     abort.abort();
   });
+
   let server, serverOk;
+
   try {
-    server = spawnPromise(
-      "node",
-      [
-        inspectorServerPath,
-        ...(command ? [`--env`, command] : []),
-        ...(mcpServerArgs ? [`--args=${mcpServerArgs.join(" ")}`] : []),
-      ],
-      {
+    if (isDev) {
+      // Development mode - use tsx watch
+      const serverCommand = "npx";
+      const serverArgs = [
+        "tsx",
+        "watch",
+        "--clear-screen=false",
+        "src/index.ts",
+      ];
+      const isWindows = process.platform === "win32";
+
+      const serverOptions = {
+        cwd: resolve(__dirname, "../..", "server"),
         env: {
           ...process.env,
           PORT: SERVER_PORT,
+          CLIENT_PORT: CLIENT_PORT,
+          MCP_PROXY_TOKEN: sessionToken,
           MCP_ENV_VARS: JSON.stringify(envVars),
         },
         signal: abort.signal,
         echoOutput: true,
-      },
-    );
+      };
 
-    // Make sure server started before starting client
-    serverOk = await Promise.race([server, delay(2 * 1000)]);
+      // For Windows, we need to use stdin: 'ignore' to simulate < NUL
+      if (isWindows) {
+        serverOptions.stdin = "ignore";
+      }
+
+      server = spawn(serverCommand, serverArgs, serverOptions);
+
+      // Give server time to start
+      serverOk = await Promise.race([
+        new Promise((resolve) => {
+          server.subscribe({
+            complete: () => resolve(false),
+            error: () => resolve(false),
+            next: () => {}, // We're using echoOutput
+          });
+        }),
+        delay(3000).then(() => true),
+      ]);
+    } else {
+      // Production mode - use built files
+      const inspectorServerPath = resolve(
+        __dirname,
+        "../..",
+        "server",
+        "build",
+        "index.js",
+      );
+
+      server = spawnPromise(
+        "node",
+        [
+          inspectorServerPath,
+          ...(command ? [`--env`, command] : []),
+          ...(mcpServerArgs ? [`--args=${mcpServerArgs.join(" ")}`] : []),
+        ],
+        {
+          env: {
+            ...process.env,
+            PORT: SERVER_PORT,
+            CLIENT_PORT: CLIENT_PORT,
+            MCP_PROXY_TOKEN: sessionToken,
+            MCP_ENV_VARS: JSON.stringify(envVars),
+          },
+          signal: abort.signal,
+          echoOutput: true,
+        },
+      );
+
+      // Make sure server started before starting client
+      serverOk = await Promise.race([server, delay(2 * 1000)]);
+    }
   } catch (error) {}
 
   if (serverOk) {
     try {
-      // Only auto-open when auth is disabled
-      const authDisabled = !!process.env.DANGEROUSLY_OMIT_AUTH;
-      if (process.env.MCP_AUTO_OPEN_ENABLED !== "false" && authDisabled) {
-        open(`http://127.0.0.1:${CLIENT_PORT}`);
+      if (isDev) {
+        // Development mode - use vite
+        const clientCommand = "npx";
+        const clientArgs = ["vite", "--port", CLIENT_PORT];
+
+        const client = spawn(clientCommand, clientArgs, {
+          cwd: resolve(__dirname, ".."),
+          env: { ...process.env, PORT: CLIENT_PORT },
+          signal: abort.signal,
+          echoOutput: true,
+        });
+
+        // Auto-open browser after vite starts
+        if (process.env.MCP_AUTO_OPEN_ENABLED !== "false") {
+          const url = authDisabled
+            ? `http://127.0.0.1:${CLIENT_PORT}`
+            : `http://127.0.0.1:${CLIENT_PORT}/?MCP_PROXY_AUTH_TOKEN=${sessionToken}`;
+
+          // Give vite time to start before opening browser
+          setTimeout(() => {
+            open(url);
+            console.log(`\n🔗 Opening browser at: ${url}\n`);
+          }, 3000);
+        }
+
+        await new Promise((resolve) => {
+          client.subscribe({
+            complete: resolve,
+            error: (err) => {
+              if (!cancelled || process.env.DEBUG) {
+                console.error("Client error:", err);
+              }
+              resolve(null);
+            },
+            next: () => {}, // We're using echoOutput
+          });
+        });
+      } else {
+        // Production mode - use client.js
+        const inspectorClientPath = resolve(
+          __dirname,
+          "../..",
+          "client",
+          "bin",
+          "client.js",
+        );
+
+        // Auto-open browser with token
+        if (process.env.MCP_AUTO_OPEN_ENABLED !== "false") {
+          const url = authDisabled
+            ? `http://127.0.0.1:${CLIENT_PORT}`
+            : `http://127.0.0.1:${CLIENT_PORT}/?MCP_PROXY_AUTH_TOKEN=${sessionToken}`;
+          open(url);
+        }
+
+        await spawnPromise("node", [inspectorClientPath], {
+          env: { ...process.env, PORT: CLIENT_PORT },
+          signal: abort.signal,
+          echoOutput: true,
+        });
       }
-      await spawnPromise("node", [inspectorClientPath], {
-        env: { ...process.env, PORT: CLIENT_PORT },
-        signal: abort.signal,
-        echoOutput: true,
-      });
     } catch (e) {
       if (!cancelled || process.env.DEBUG) throw e;
     }
