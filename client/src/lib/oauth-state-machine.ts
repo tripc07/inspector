@@ -36,11 +36,14 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
         resourceMetadata = await discoverOAuthProtectedResourceMetadata(
           context.serverUrl,
         );
-        if (
-          resourceMetadata &&
-          resourceMetadata.authorization_servers?.length
-        ) {
-          authServerUrl = new URL(resourceMetadata.authorization_servers[0]);
+        if (resourceMetadata) {
+          if (resourceMetadata.resource !== context.serverUrl) {
+            throw new Error("Resource URL does not match server URL");
+          }
+
+          if (resourceMetadata.authorization_servers?.length) {
+            authServerUrl = new URL(resourceMetadata.authorization_servers[0]);
+          }
         }
       } catch (e) {
         if (e instanceof Error) {
@@ -113,6 +116,7 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
           clientInformation,
           redirectUrl: context.provider.redirectUrl,
           scope,
+          resource: new URL(context.serverUrl),
         },
       );
 
@@ -163,6 +167,7 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
         authorizationCode: context.state.authorizationCode,
         codeVerifier,
         redirectUri: context.provider.redirectUrl,
+        resource: new URL(context.serverUrl),
       });
 
       context.provider.saveTokens(tokens);
