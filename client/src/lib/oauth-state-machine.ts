@@ -51,7 +51,9 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
 
       if (resourceMetadata) {
         if (resourceMetadata.resource !== context.serverUrl) {
-          throw new Error(`Resource URL from metadata does not match server URL. ${resourceMetadata.resource} != ${context.serverUrl}`);
+          throw new Error(
+            `Resource URL from metadata does not match server URL. ${resourceMetadata.resource} != ${context.serverUrl}`,
+          );
         }
       }
 
