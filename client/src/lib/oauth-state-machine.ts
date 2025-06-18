@@ -29,7 +29,8 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
   metadata_discovery: {
     canTransition: async () => true,
     execute: async (context) => {
-      let authServerUrl = new URL(context.serverUrl);
+      // Default to discovering from the server's URL
+      let authServerUrl = new URL("/", context.serverUrl);
       let resourceMetadata: OAuthProtectedResourceMetadata | null = null;
       let resourceMetadataError: Error | null = null;
       try {

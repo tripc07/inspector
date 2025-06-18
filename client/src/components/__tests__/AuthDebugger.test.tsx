@@ -203,7 +203,7 @@ describe("AuthDebugger", () => {
 
       // Should first discover and save OAuth metadata
       expect(mockDiscoverOAuthMetadata).toHaveBeenCalledWith(
-        new URL("https://example.com/mcp"),
+        new URL("https://example.com/"),
       );
 
       // Check that updateAuthState was called with the right info message
@@ -361,7 +361,7 @@ describe("AuthDebugger", () => {
       });
 
       expect(mockDiscoverOAuthMetadata).toHaveBeenCalledWith(
-        new URL("https://example.com/mcp"),
+        new URL("https://example.com/"),
       );
     });
 
@@ -594,7 +594,7 @@ describe("AuthDebugger", () => {
           expect.objectContaining({
             resourceMetadataError: mockError,
             // Should use the original server URL as fallback
-            authServerUrl: new URL("https://example.com/mcp"),
+            authServerUrl: new URL("https://example.com/"),
             oauthStep: "client_registration",
           }),
         );
@@ -602,7 +602,7 @@ describe("AuthDebugger", () => {
 
       // Verify that regular OAuth metadata discovery was still called
       expect(mockDiscoverOAuthMetadata).toHaveBeenCalledWith(
-        new URL("https://example.com/mcp"),
+        new URL("https://example.com/"),
       );
     });
   });
