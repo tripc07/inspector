@@ -37,10 +37,6 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
           context.serverUrl,
         );
         if (resourceMetadata) {
-          if (resourceMetadata.resource !== context.serverUrl) {
-            throw new Error("Resource URL does not match server URL");
-          }
-
           if (resourceMetadata.authorization_servers?.length) {
             authServerUrl = new URL(resourceMetadata.authorization_servers[0]);
           }
@@ -50,6 +46,12 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
           resourceMetadataError = e;
         } else {
           resourceMetadataError = new Error(String(e));
+        }
+      }
+
+      if (resourceMetadata) {
+        if (resourceMetadata.resource !== context.serverUrl) {
+          throw new Error(`Resource URL from metadata does not match server URL. ${resourceMetadata.resource} != ${context.serverUrl}`);
         }
       }
 
