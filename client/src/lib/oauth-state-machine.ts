@@ -11,6 +11,8 @@ import {
   OAuthMetadataSchema,
   OAuthProtectedResourceMetadata,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 export interface StateMachineContext {
   state: AuthDebuggerState;
@@ -178,8 +180,53 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
       context.provider.saveTokens(tokens);
       context.updateState({
         oauthTokens: tokens,
-        oauthStep: "complete",
+        oauthStep: "validate_token",
       });
+    },
+  },
+  
+  validate_token: {
+    canTransition: async (context) => {
+      return !!context.state.oauthTokens && !!context.state.oauthTokens.access_token;
+    },
+    execute: async (context) => {
+      if (!context.state.oauthTokens?.access_token) {
+        throw new Error("No access token available for validation");
+      }
+
+      try {
+        // Create a simple client with the StreamableHTTP transport
+        const transport = new StreamableHTTPClientTransport(
+          new URL(context.serverUrl), 
+          {
+            requestInit: {
+              headers: {
+                Authorization: `Bearer ${context.state.oauthTokens.access_token}`
+              }
+            }
+          }
+        );
+        
+        const client = new Client(
+          { name: "mcp-auth-validator", version: "1.0.0" },
+          { capabilities: {} }
+        );
+        
+        // Connect and list tools to validate the token
+        await client.connect(transport);
+        const response = await client.listTools();
+        
+        // Successfully validated token
+        context.updateState({
+          oauthStep: "complete",
+          statusMessage: {
+            type: "success",
+            message: `Token validated successfully! Found ${response.tools?.length || 0} tools.`,
+          },
+        });
+      } catch (error) {
+        throw new Error(`Token validation failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
     },
   },
 

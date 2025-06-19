@@ -152,6 +152,12 @@ class CLIAuthFlowTester {
             scope: this.state.oauthTokens?.scope,
           });
           break;
+          
+        case 'validate_token':
+          this.success('TOKEN VALIDATION', 'Token validated successfully', {
+            message: this.state.statusMessage?.message || 'Access token is valid',
+          });
+          break;
       }
 
       return true;
@@ -282,6 +288,10 @@ class CLIAuthFlowTester {
 
       // Step 6: Exchange Code for Tokens
       await this.executeStep('token_request');
+      console.log("");
+      
+      // Step 7: Validate the token by calling tools/list
+      await this.executeStep('validate_token');
       console.log("");
 
       // Final summary
