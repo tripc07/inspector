@@ -6,6 +6,62 @@ import http from "node:http";
 import https from "node:https";
 import readline from "node:readline";
 
+// Configuration for logging
+type LogLevel = 'info' | 'success' | 'error' | 'debug';
+interface LogOptions {
+  verbose: boolean;
+  redactSensitiveData: boolean;
+}
+
+// Default options
+const DEFAULT_LOG_OPTIONS: LogOptions = {
+  verbose: false,
+  redactSensitiveData: true,
+};
+
+/**
+ * Helper function to redact sensitive information in logs
+ *
+ * @param data The data object or string to redact sensitive info from
+ * @param redact Whether to redact sensitive information
+ * @returns Redacted data object or string
+ */
+function redactSensitiveData(data: any, redact: boolean = true): any {
+  if (!redact || !data) return data;
+
+  // For strings that look like tokens
+  if (typeof data === 'string') {
+    if (data.length > 8 && data.includes('-')) {
+      return data.substring(0, 4) + '...' + data.substring(data.length - 4);
+    }
+    return data;
+  }
+
+  // For objects containing sensitive keys
+  if (typeof data === 'object' && data !== null) {
+    const sensitiveKeys = [
+      'access_token', 'refresh_token', 'id_token', 'token',
+      'client_secret', 'code', 'authorization_code'
+    ];
+
+    const result = Array.isArray(data) ? [...data] : { ...data };
+
+    for (const key in result) {
+      if (sensitiveKeys.includes(key)) {
+        if (typeof result[key] === 'string' && result[key].length > 0) {
+          result[key] = result[key].substring(0, 4) + '...' + result[key].substring(result[key].length - 4);
+        }
+      } else if (typeof result[key] === 'object' && result[key] !== null) {
+        result[key] = redactSensitiveData(result[key], redact);
+      }
+    }
+
+    return result;
+  }
+
+  return data;
+}
+
 // Simple in-memory storage implementation for CLI usage
 class MemoryStorage implements StorageInterface {
   private storage: Map<string, string>;
@@ -33,41 +89,72 @@ class CLIAuthFlowTester {
   storage: MemoryStorage;
   stateMachine: OAuthStateMachine;
   autoRedirect: boolean;
+  logOptions: LogOptions;
+  stepsCompleted: string[] = [];
 
-  constructor(serverUrl: string, autoRedirect: boolean = false) {
+  constructor(serverUrl: string, options: { autoRedirect?: boolean; verbose?: boolean; noRedact?: boolean } = {}) {
     this.serverUrl = serverUrl;
     this.state = { ...EMPTY_DEBUGGER_STATE };
     this.storage = new MemoryStorage();
     this.stateMachine = new OAuthStateMachine(serverUrl, this.updateState.bind(this));
-    this.autoRedirect = autoRedirect;
+    this.autoRedirect = options.autoRedirect || false;
+    this.logOptions = {
+      verbose: options.verbose || DEFAULT_LOG_OPTIONS.verbose,
+      redactSensitiveData: !options.noRedact,
+    };
   }
 
   updateState(updates: Partial<AuthDebuggerState>) {
     this.state = { ...this.state, ...updates };
   }
 
-  log(step: string, message: string, data: any = null) {
-    const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] ${step}: ${message}`);
-    if (data) {
-      console.log(`  └─ Details:`, JSON.stringify(data, null, 2));
+  log(level: LogLevel, step: string, message: string, data: any = null) {
+    // Only show debug logs in verbose mode
+    if (level === 'debug' && !this.logOptions.verbose) return;
+
+    const timestamp = this.logOptions.verbose ? `[${new Date().toISOString()}] ` : '';
+    const processedData = data ? redactSensitiveData(data, this.logOptions.redactSensitiveData) : null;
+
+    switch (level) {
+      case 'info':
+        console.log(`${timestamp}${step}: ${message}`);
+        break;
+      case 'success':
+        const icon = step ? '✅ ' : '';
+        console.log(`${timestamp}${icon}${step ? step + ': ' : ''}${message}`);
+        break;
+      case 'error':
+        console.error(`${timestamp}❌ ${step}: ${message}`);
+        break;
+      case 'debug':
+        console.log(`${timestamp}🔍 ${step}: ${message}`);
+        break;
     }
+
+    if (processedData && (this.logOptions.verbose || level === 'error')) {
+      console.log(`  └─ ${level === 'error' ? 'Error' : 'Data'}:`,
+        typeof processedData === 'string'
+          ? processedData
+          : JSON.stringify(processedData, null, 2)
+      );
+    }
+  }
+
+  debug(step: string, message: string, data: any = null) {
+    this.log('debug', step, message, data);
+  }
+
+  info(step: string, message: string, data: any = null) {
+    this.log('info', step, message, data);
   }
 
   error(step: string, message: string, error: Error | null = null) {
-    const timestamp = new Date().toISOString();
-    console.error(`[${timestamp}] ❌ ${step}: ${message}`);
-    if (error) {
-      console.error(`  └─ Error:`, error.message);
-    }
+    this.log('error', step, message, error);
   }
 
   success(step: string, message: string, data: any = null) {
-    const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] ✅ ${step}: ${message}`);
-    if (data) {
-      console.log(`  └─ Data:`, JSON.stringify(data, null, 2));
-    }
+    this.log('success', step, message, data);
+    this.stepsCompleted.push(step);
   }
 
   async executeStep(stepName: OAuthStep) {
@@ -301,15 +388,36 @@ class CLIAuthFlowTester {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
-  if (args.length === 0) {
-    console.error("Usage: npx tsx test-auth-flow.ts <server-url> [--auto-redirect]");
+  if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+    console.error("Usage: npx tsx test-auth-flow.ts <server-url> [OPTIONS]");
     console.error("Example: npx tsx test-auth-flow.ts https://example.com/mcp");
-    console.error("Add --auto-redirect flag for servers that redirect immediately without user interaction");
+    console.error("\nOptions:");
+    console.error("  --auto-redirect     Enable automatic redirect handling without user interaction");
+    console.error("  --verbose           Enable verbose output with timestamps and detailed data");
+    console.error("  --no-redact         Show tokens and sensitive data in full (not recommended)");
+    console.error("  --help, -h          Show this help message");
+    process.exit(args[0] === "--help" || args[0] === "-h" ? 0 : 1);
+  }
+
+  // Extract the server URL (the first non-flag argument)
+  let serverUrl = "";
+  for (const arg of args) {
+    if (!arg.startsWith("--") && !arg.startsWith("-")) {
+      serverUrl = arg;
+      break;
+    }
+  }
+  
+  if (!serverUrl) {
+    console.error("❌ Server URL is required");
+    console.error("Usage: npx tsx test-auth-flow.ts <server-url> [OPTIONS]");
     process.exit(1);
   }
 
-  const serverUrl = args[0];
+  // Parse flags
   const autoRedirect = args.includes('--auto-redirect');
+  const verbose = args.includes('--verbose');
+  const noRedact = args.includes('--no-redact');
 
   // Validate URL
   try {
@@ -319,7 +427,12 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const tester = new CLIAuthFlowTester(serverUrl, autoRedirect);
+  const tester = new CLIAuthFlowTester(serverUrl, {
+    autoRedirect,
+    verbose,
+    noRedact
+  });
+  
   const success = await tester.runFullFlow();
 
   process.exit(success ? 0 : 1);
