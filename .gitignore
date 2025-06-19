@@ -11,3 +11,4 @@ cli/build
 test-output
 # symlinked by `npm run link-sdk`:
 sdk
+.last-session-token

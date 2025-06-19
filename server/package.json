@@ -16,7 +16,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node build/index.js",
-    "dev": "tsx watch --clear-screen=false src/index.ts",
+    "dev": "rm -f .last-session-token && DANGEROUSLY_PREDEFINED_SESSION_TOKEN=\"$( openssl rand -base64 32 )\" tsx watch --clear-screen=false src/index.ts",
     "dev:windows": "tsx watch --clear-screen=false src/index.ts < NUL"
   },
   "devDependencies": {

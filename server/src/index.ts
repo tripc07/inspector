@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import cors from "cors";
+import open from "open";
+import fs from "node:fs";
 import { parseArgs } from "node:util";
 import { parse as shellParseArgs } from "shell-quote";
 
@@ -89,7 +91,7 @@ app.use((req, res, next) => {
 const webAppTransports: Map<string, Transport> = new Map<string, Transport>(); // Web app transports by web app sessionId
 const serverTransports: Map<string, Transport> = new Map<string, Transport>(); // Server Transports by web app sessionId
 
-const sessionToken = randomBytes(32).toString("hex");
+const sessionToken = process.env.DANGEROUSLY_PREDEFINED_SESSION_TOKEN ?? randomBytes(32).toString("hex");
 const authDisabled = !!process.env.DANGEROUSLY_OMIT_AUTH;
 
 // Origin validation middleware to prevent DNS rebinding attacks
@@ -534,6 +536,7 @@ const HOST = process.env.HOST || "127.0.0.1";
 const server = app.listen(PORT, HOST);
 server.on("listening", () => {
   console.log(`⚙️ Proxy server listening on ${HOST}:${PORT}`);
+  let clientUrl: string;
   if (!authDisabled) {
     console.log(`🔑 Session token: ${sessionToken}`);
     console.log(
@@ -542,14 +545,22 @@ server.on("listening", () => {
 
     // Display clickable URL with pre-filled token
     const clientPort = process.env.CLIENT_PORT || "6274";
-    const clientUrl = `http://localhost:${clientPort}/?MCP_PROXY_AUTH_TOKEN=${sessionToken}`;
+    clientUrl = `http://localhost:${clientPort}/?MCP_PROXY_AUTH_TOKEN=${sessionToken}`;
     console.log(
       `\n🔗 Open inspector with token pre-filled:\n   ${clientUrl}\n   (Auto-open is disabled when authentication is enabled)\n`,
     );
   } else {
+    clientUrl = `http://localhost:${clientPort}/`;
     console.log(
       `⚠️  WARNING: Authentication is disabled. This is not recommended.`,
     );
+  }
+  if (process.env.MCP_AUTO_OPEN_ENABLED !== "false") {
+    const lastTokenFile = '.last-session-token';
+    if (process.env.DANGEROUSLY_PREDEFINED_SESSION_TOKEN && (!fs.existsSync(lastTokenFile) || (fs.readFileSync(lastTokenFile, "utf8") !== sessionToken))) {
+      fs.writeFileSync(lastTokenFile, sessionToken, "utf8");
+      open(clientUrl);
+    }
   }
 });
 server.on("error", (err) => {
