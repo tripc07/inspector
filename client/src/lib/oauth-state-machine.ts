@@ -5,8 +5,12 @@ import {
   registerClient,
   startAuthorization,
   exchangeAuthorization,
+  defaultValidateResource,
   discoverOAuthProtectedResourceMetadata,
 } from "@modelcontextprotocol/sdk/client/auth.js";
+import {
+  resourceUrlFromServerUrl
+} from "@modelcontextprotocol/sdk/shared/auth-utils.js";
 import {
   OAuthMetadataSchema,
   OAuthProtectedResourceMetadata,
@@ -39,10 +43,8 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
         resourceMetadata = await discoverOAuthProtectedResourceMetadata(
           context.serverUrl,
         );
-        if (resourceMetadata) {
-          if (resourceMetadata.authorization_servers?.length) {
-            authServerUrl = new URL(resourceMetadata.authorization_servers[0]);
-          }
+        if (resourceMetadata?.authorization_servers?.length) {
+          authServerUrl = new URL(resourceMetadata.authorization_servers[0]);
         }
       } catch (e) {
         if (e instanceof Error) {
@@ -52,12 +54,10 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
         }
       }
 
+      let resource: string| undefined;
       if (resourceMetadata) {
-        if (resourceMetadata.resource !== context.serverUrl) {
-          throw new Error(
-            `Resource URL from metadata does not match server URL. ${resourceMetadata.resource} != ${context.serverUrl}`,
-          );
-        }
+        resource = resourceUrlFromServerUrl(context.serverUrl);
+        defaultValidateResource(resource, resourceMetadata.resource)
       }
 
       const metadata = await discoverOAuthMetadata(authServerUrl);
@@ -68,6 +68,7 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
       context.provider.saveServerMetadata(parsedMetadata);
       context.updateState({
         resourceMetadata,
+        resource,
         resourceMetadataError,
         authServerUrl,
         oauthMetadata: parsedMetadata,
@@ -123,7 +124,7 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
           clientInformation,
           redirectUrl: context.provider.redirectUrl,
           scope,
-          resource: new URL(context.serverUrl),
+          resource: context.state.resource,
         },
       );
 
@@ -174,7 +175,7 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
         authorizationCode: context.state.authorizationCode,
         codeVerifier,
         redirectUri: context.provider.redirectUrl,
-        resource: new URL(context.serverUrl),
+        resource: context.state.resource,
       });
 
       context.provider.saveTokens(tokens);
@@ -184,7 +185,7 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
       });
     },
   },
-  
+
   validate_token: {
     canTransition: async (context) => {
       return !!context.state.oauthTokens && !!context.state.oauthTokens.access_token;
@@ -197,7 +198,7 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
       try {
         // Create a simple client with the StreamableHTTP transport
         const transport = new StreamableHTTPClientTransport(
-          new URL(context.serverUrl), 
+          new URL(context.serverUrl),
           {
             requestInit: {
               headers: {
@@ -206,16 +207,16 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
             }
           }
         );
-        
+
         const client = new Client(
           { name: "mcp-auth-validator", version: "1.0.0" },
           { capabilities: {} }
         );
-        
+
         // Connect and list tools to validate the token
         await client.connect(transport);
         const response = await client.listTools();
-        
+
         // Successfully validated token
         context.updateState({
           oauthStep: "complete",
