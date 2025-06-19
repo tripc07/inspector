@@ -5,12 +5,9 @@ import {
   registerClient,
   startAuthorization,
   exchangeAuthorization,
-  defaultValidateResource,
   discoverOAuthProtectedResourceMetadata,
+  selectResource
 } from "@modelcontextprotocol/sdk/client/auth.js";
-import {
-  resourceUrlFromServerUrl
-} from "@modelcontextprotocol/sdk/shared/auth-utils.js";
 import {
   OAuthMetadataSchema,
   OAuthProtectedResourceMetadata,
@@ -54,11 +51,7 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
         }
       }
 
-      let resource: string| undefined;
-      if (resourceMetadata) {
-        resource = resourceUrlFromServerUrl(context.serverUrl);
-        defaultValidateResource(resource, resourceMetadata.resource)
-      }
+      const resource = selectResource(context.serverUrl, context.provider, resourceMetadata)
 
       const metadata = await discoverOAuthMetadata(authServerUrl);
       if (!metadata) {
