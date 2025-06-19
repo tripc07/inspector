@@ -2,8 +2,7 @@
 
 import { execSync } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
-import pkg from 'glob';
-const { glob } = pkg;
+import { glob } from 'glob';
 
 // Run TypeScript compilation
 console.log('Building TypeScript...');

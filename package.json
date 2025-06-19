@@ -11,7 +11,6 @@
     "mcp-inspector": "cli/build/cli.js"
   },
   "files": [
-    "client/bin",
     "client/dist",
     "server/build",
     "cli/build"
