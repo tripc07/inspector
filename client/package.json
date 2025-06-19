@@ -15,10 +15,10 @@
     "dist"
   ],
   "scripts": {
-    "dev": "vite --port 6274",
+    "dev": "vite --port 6274 --host localhost",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview --port 6274",
+    "preview": "vite preview --port 6274 --host localhost",
     "test": "jest --config jest.config.cjs",
     "test:watch": "jest --config jest.config.cjs --watch"
   },
