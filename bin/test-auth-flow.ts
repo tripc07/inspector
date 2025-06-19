@@ -110,27 +110,17 @@ class CLIAuthFlowTester {
       // Log step-specific success information
       switch (stepName) {
         case 'metadata_discovery':
-          this.success('METADATA DISCOVERY', 'OAuth metadata discovered', {
-            issuer: this.state.oauthMetadata?.issuer,
-            authorization_endpoint: this.state.oauthMetadata?.authorization_endpoint,
-            token_endpoint: this.state.oauthMetadata?.token_endpoint,
-            scopes_supported: this.state.oauthMetadata?.scopes_supported,
-            resource_metadata: this.state.resourceMetadata ? {
-              resource: this.state.resourceMetadata.resource,
-              authorization_servers: this.state.resourceMetadata.authorization_servers,
-              scopes_supported: this.state.resourceMetadata.scopes_supported,
-            } : null,
-            resource_metadata_error: this.state.resourceMetadataError?.message,
-          });
+          if (this.state.resourceMetadata) {
+            this.success('Resource Metadata', 'OAuth Resource Metadata', this.state.resourceMetadata);
+          } else {
+            this.error('Resource Metadata', 'Issue fetching resource metadata', this.state.resourceMetadataError);
+          }
+
+          this.success('METADATA DISCOVERY', `OAuth metadata discovered, from: ${this.state.authServerUrl}`, this.state.oauthMetadata);
           break;
 
         case 'client_registration':
-          this.success('CLIENT REGISTRATION', 'Client registered successfully', {
-            client_id: this.state.oauthClientInfo?.client_id,
-            client_secret: this.state.oauthClientInfo?.client_secret ? '[REDACTED]' : undefined,
-            client_id_issued_at: this.state.oauthClientInfo?.client_id_issued_at,
-            client_secret_expires_at: this.state.oauthClientInfo?.client_secret_expires_at,
-          });
+          this.success('CLIENT REGISTRATION', 'Client registered successfully', this.state.oauthClientInfo);
           break;
 
         case 'authorization_redirect':
@@ -144,15 +134,9 @@ class CLIAuthFlowTester {
           break;
 
         case 'token_request':
-          this.success('TOKEN EXCHANGE', 'Tokens obtained successfully', {
-            access_token: this.state.oauthTokens?.access_token ? '[REDACTED]' : undefined,
-            token_type: this.state.oauthTokens?.token_type,
-            expires_in: this.state.oauthTokens?.expires_in,
-            refresh_token: this.state.oauthTokens?.refresh_token ? '[REDACTED]' : undefined,
-            scope: this.state.oauthTokens?.scope,
-          });
+          this.success('TOKEN EXCHANGE', 'Tokens obtained successfully', this.state.oauthTokens);
           break;
-          
+
         case 'validate_token':
           this.success('TOKEN VALIDATION', 'Token validated successfully', {
             message: this.state.statusMessage?.message || 'Access token is valid',
@@ -289,7 +273,7 @@ class CLIAuthFlowTester {
       // Step 6: Exchange Code for Tokens
       await this.executeStep('token_request');
       console.log("");
-      
+
       // Step 7: Validate the token by calling tools/list
       await this.executeStep('validate_token');
       console.log("");
