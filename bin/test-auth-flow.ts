@@ -318,20 +318,30 @@ class CLIAuthFlowTester {
   async runFullFlow(): Promise<boolean> {
     console.log(`\n🚀 Starting MCP Server Authorization Flow Test`);
     console.log(`📡 Server URL: ${this.serverUrl}`);
+    
     if (this.autoRedirect) {
-      console.log(`🤖 Auto-redirect mode: Enabled\n`);
+      console.log(`🤖 Auto-redirect mode: Enabled`);
     } else {
-      console.log(`👤 Manual authorization mode\n`);
+      console.log(`👤 Manual authorization mode`);
     }
+    
+    if (this.logOptions.verbose) {
+      console.log(`🔍 Verbose output: Enabled`);
+    }
+    
+    if (!this.logOptions.redactSensitiveData) {
+      console.log(`⚠️ Token redaction: Disabled`);
+    }
+    console.log("");
 
     try {
       // Step 1: Metadata Discovery
       await this.executeStep('metadata_discovery');
-      console.log("");
+      if (this.logOptions.verbose) console.log("");
 
       // Step 2: Client Registration
       await this.executeStep('client_registration');
-      console.log("");
+      if (this.logOptions.verbose) console.log("");
 
       // Step 3: Authorization Redirect Preparation
       await this.executeStep('authorization_redirect');
@@ -355,11 +365,11 @@ class CLIAuthFlowTester {
 
       // Step 5: Validate Authorization Code
       await this.executeStep('authorization_code');
-      console.log("");
+      if (this.logOptions.verbose) console.log("");
 
       // Step 6: Exchange Code for Tokens
       await this.executeStep('token_request');
-      console.log("");
+      if (this.logOptions.verbose) console.log("");
 
       // Step 7: Validate the token by calling tools/list
       await this.executeStep('validate_token');
@@ -367,7 +377,12 @@ class CLIAuthFlowTester {
 
       // Final summary
       console.log("🎉 AUTHORIZATION FLOW COMPLETED SUCCESSFULLY!");
-      console.log("✅ All steps completed without errors");
+      if (!this.logOptions.verbose) {
+        // Show a compact summary of completed steps in non-verbose mode
+        console.log("✅ Steps completed: metadata → client registration → authorization → token exchange → validation");
+      } else {
+        console.log("✅ All steps completed without errors");
+      }
       console.log("🔑 Access token obtained and ready for use");
 
       return true;
@@ -407,7 +422,7 @@ async function main(): Promise<void> {
       break;
     }
   }
-  
+
   if (!serverUrl) {
     console.error("❌ Server URL is required");
     console.error("Usage: npx tsx test-auth-flow.ts <server-url> [OPTIONS]");
@@ -432,7 +447,7 @@ async function main(): Promise<void> {
     verbose,
     noRedact
   });
-  
+
   const success = await tester.runFullFlow();
 
   process.exit(success ? 0 : 1);
