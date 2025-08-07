@@ -5,7 +5,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 
 import { ClientBehavior, TestResult, ValidationServerConfig } from '../../types.js';
-import { MockAuthServer } from '../auth/index.js';
+import { MockAuthServer, MockTokenVerifier } from '../auth/index.js';
 import { z } from 'zod';
 
 export class ValidationServer {
@@ -112,8 +112,6 @@ export class ValidationServer {
         }
         trace.response.body = body;
 
-
-
         oldEnd.apply(res, arguments);
       };
 
@@ -127,8 +125,9 @@ export class ValidationServer {
       res.json({ status: 'ok' });
     });
 
-    let bearerMiddleware;
-
+    let bearerMiddleware = (req, res, next) => {
+      next()
+    }
 
     // OAuth metadata endpoint (if auth is required)
     if (this.config.authRequired) {
@@ -144,6 +143,7 @@ export class ValidationServer {
         });
       });
 
+      const tokenVerifier = new MockTokenVerifier();
       bearerMiddleware = requireBearerAuth({
          verifier: tokenVerifier,
          requiredScopes: [],
@@ -153,7 +153,7 @@ export class ValidationServer {
     }
 
     // MCP POST endpoint - stateless mode
-    this.app.post('/mcp', async (req: Request, res: Response) => {
+    this.app.post('/mcp', bearerMiddleware, async (req: Request, res: Response) => {
       // Track the incoming message
       if (req.body) {
         const message = req.body;

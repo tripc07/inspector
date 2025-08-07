@@ -1,6 +1,8 @@
 import express, { Request, Response } from 'express';
 import { Server } from 'http';
 import crypto from 'crypto';
+import { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
+import { OAuthTokenVerifier } from '@modelcontextprotocol/sdk/server/auth/provider.js';
 
 interface AuthorizationRequest {
   clientId: string;
@@ -10,6 +12,16 @@ interface AuthorizationRequest {
   codeChallengeMethod: string;
 }
 
+// Shared constants for the mock auth server
+const AUTH_CONSTANTS = {
+  FIXED_AUTH_CODE: 'test_auth_code_123',
+  FIXED_ACCESS_TOKEN: 'test_access_token_abc',
+  FIXED_REFRESH_TOKEN: 'test_refresh_token_xyz',
+  TOKEN_EXPIRY: 3600, // 1 hour
+  CLIENT_ID: 'test_client_id',
+  CLIENT_SECRET: 'test_client_secret',
+} as const;
+
 export class MockAuthServer {
   private app: express.Application;
   private server: Server | null = null;
@@ -17,12 +29,6 @@ export class MockAuthServer {
 
   // Store authorization requests for PKCE validation
   private authorizationRequests: Map<string, AuthorizationRequest> = new Map();
-
-  // Static values for simplicity
-  private readonly FIXED_AUTH_CODE = 'test_auth_code_123';
-  private readonly FIXED_ACCESS_TOKEN = 'test_access_token_abc';
-  private readonly FIXED_REFRESH_TOKEN = 'test_refresh_token_xyz';
-  private readonly TOKEN_EXPIRY = 3600; // 1 hour
 
   constructor(port: number = 3001) {
     this.port = port;
@@ -70,7 +76,7 @@ export class MockAuthServer {
       }
 
       // Store the request for later PKCE validation
-      this.authorizationRequests.set(this.FIXED_AUTH_CODE, {
+      this.authorizationRequests.set(AUTH_CONSTANTS.FIXED_AUTH_CODE, {
         clientId: client_id,
         redirectUri: redirect_uri,
         state: state || '',
@@ -80,7 +86,7 @@ export class MockAuthServer {
 
       // Immediately redirect back with authorization code (no user interaction)
       const redirectUrl = new URL(redirect_uri);
-      redirectUrl.searchParams.set('code', this.FIXED_AUTH_CODE);
+      redirectUrl.searchParams.set('code', AUTH_CONSTANTS.FIXED_AUTH_CODE);
       if (state) {
         redirectUrl.searchParams.set('state', state);
       }
@@ -103,7 +109,7 @@ export class MockAuthServer {
 
       if (grant_type === 'authorization_code') {
         // Validate authorization code
-        if (code !== this.FIXED_AUTH_CODE) {
+        if (code !== AUTH_CONSTANTS.FIXED_AUTH_CODE) {
           return res.status(400).json({
             error: 'invalid_grant',
             error_description: 'Invalid authorization code'
@@ -140,16 +146,16 @@ export class MockAuthServer {
 
         // Return tokens
         res.json({
-          access_token: this.FIXED_ACCESS_TOKEN,
+          access_token: AUTH_CONSTANTS.FIXED_ACCESS_TOKEN,
           token_type: 'Bearer',
-          expires_in: this.TOKEN_EXPIRY,
-          refresh_token: this.FIXED_REFRESH_TOKEN,
+          expires_in: AUTH_CONSTANTS.TOKEN_EXPIRY,
+          refresh_token: AUTH_CONSTANTS.FIXED_REFRESH_TOKEN,
           scope: 'mcp'
         });
 
       } else if (grant_type === 'refresh_token') {
         // Simple refresh token validation
-        if (refresh_token !== this.FIXED_REFRESH_TOKEN) {
+        if (refresh_token !== AUTH_CONSTANTS.FIXED_REFRESH_TOKEN) {
           return res.status(400).json({
             error: 'invalid_grant',
             error_description: 'Invalid refresh token'
@@ -158,10 +164,10 @@ export class MockAuthServer {
 
         // Return new access token (same static value for simplicity)
         res.json({
-          access_token: this.FIXED_ACCESS_TOKEN,
+          access_token: AUTH_CONSTANTS.FIXED_ACCESS_TOKEN,
           token_type: 'Bearer',
-          expires_in: this.TOKEN_EXPIRY,
-          refresh_token: this.FIXED_REFRESH_TOKEN,
+          expires_in: AUTH_CONSTANTS.TOKEN_EXPIRY,
+          refresh_token: AUTH_CONSTANTS.FIXED_REFRESH_TOKEN,
           scope: 'mcp'
         });
 
@@ -179,8 +185,8 @@ export class MockAuthServer {
 
       // Return a static client configuration
       res.status(201).json({
-        client_id: 'test_client_id',
-        client_secret: 'test_client_secret',
+        client_id: AUTH_CONSTANTS.CLIENT_ID,
+        client_secret: AUTH_CONSTANTS.CLIENT_SECRET,
         client_name: client_name || 'Test Client',
         redirect_uris: redirect_uris || [],
         grant_types: ['authorization_code', 'refresh_token'],
@@ -232,5 +238,28 @@ export class MockAuthServer {
 
   getUrl(): string {
     return `http://localhost:${this.port}`;
+  }
+}
+
+/**
+ * Token verifier implementation for the mock auth server.
+ * Validates the fixed access token and returns AuthInfo.
+ */
+export class MockTokenVerifier implements OAuthTokenVerifier {
+  async verifyAccessToken(token: string): Promise<AuthInfo> {
+    if (token !== AUTH_CONSTANTS.FIXED_ACCESS_TOKEN) {
+      throw new Error('Invalid access token');
+    }
+
+    // Return AuthInfo for the valid token
+    return {
+      token: token,
+      clientId: AUTH_CONSTANTS.CLIENT_ID,
+      scopes: ['mcp'],
+      expiresAt: Math.floor(Date.now() / 1000) + AUTH_CONSTANTS.TOKEN_EXPIRY,
+      extra: {
+        source: 'mock-auth-server'
+      }
+    };
   }
 }

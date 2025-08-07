@@ -24,7 +24,7 @@ program
 async function runComplianceTests(clientCommand: string, options: any) {
   const verbose = options.verbose;
   const timeout = parseInt(options.timeout, 10);
-  
+
   console.log('Running MCP compliance tests...');
 
   const allTestsPassed: boolean[] = [];
@@ -53,20 +53,20 @@ async function runComplianceTests(clientCommand: string, options: any) {
 }
 
 async function runSingleTest(
-  clientCommand: string, 
-  authRequired: boolean, 
+  clientCommand: string,
+  authRequired: boolean,
   timeout: number,
   options: any
 ): Promise<boolean> {
   const verbose = options.verbose;
-  
+
   // Start validation server
   const server = new ValidationServer({ authRequired });
 
   try {
     const serverPort = await server.start();
     const serverUrl = `http://localhost:${serverPort}/mcp`;
-    
+
     if (verbose) {
       console.log(`  Server: ${serverUrl}`);
     }
@@ -145,9 +145,9 @@ async function runSingleTest(
 function printCompactReport(report: ComplianceReport, behavior?: any) {
   const passed = report.overall_result === 'PASS';
   const icon = passed ? '✅' : '❌';
-  
+
   console.log(`  ${icon} ${report.test_suite}: ${report.overall_result}`);
-  
+
   // Only show failures in compact mode
   if (!passed) {
     report.tests.forEach(test => {
@@ -169,42 +169,42 @@ function printCompactReport(report: ComplianceReport, behavior?: any) {
       console.log('\n  ====== HTTP TRACE ======');
       behavior.httpTrace.forEach((trace: any, index: number) => {
         console.log(`\n  --- Request #${index + 1} ---`);
-        
+
         // Request line
         console.log(`  ${trace.method} ${trace.url} HTTP/1.1`);
-        
+
         // Request headers
         if (trace.headers) {
           Object.entries(trace.headers).forEach(([key, value]) => {
             console.log(`  ${key}: ${value}`);
           });
         }
-        
+
         // Request body
         if (trace.body) {
           console.log('');
           const bodyStr = typeof trace.body === 'string' ? trace.body : JSON.stringify(trace.body);
           console.log(`  ${bodyStr}`);
         }
-        
+
         // Response
         if (trace.response) {
           console.log(`\n  HTTP/1.1 ${trace.response.status} ${getStatusText(trace.response.status)}`);
-          
+
           // Response headers
           if (trace.response.headers) {
             Object.entries(trace.response.headers).forEach(([key, value]) => {
               console.log(`  ${key}: ${value}`);
             });
           }
-          
+
           // Response body
           if (trace.response.body) {
             console.log('');
-            const bodyStr = typeof trace.response.body === 'string' 
-              ? trace.response.body 
+            const bodyStr = typeof trace.response.body === 'string'
+              ? trace.response.body
               : JSON.stringify(trace.response.body);
-            
+
             // Truncate very long responses
             if (bodyStr.length > 1000) {
               console.log(`  ${bodyStr.substring(0, 1000)}... [truncated]`);
@@ -217,7 +217,7 @@ function printCompactReport(report: ComplianceReport, behavior?: any) {
       });
       console.log('  ========================\n');
     }
-    
+
     // Show other behavior details
     console.log('  Client Behavior Summary:');
     const summaryBehavior = { ...behavior };
