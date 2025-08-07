@@ -72,6 +72,42 @@ Clients being tested must:
 - Missing required parameters
 - Timing information
 
+## Directory Structure
+
+```
+auth-compat/
+├── package.json              # Main package configuration
+├── tsconfig.json             # TypeScript configuration
+├── README.md                 # Project documentation
+├── auth-compliance-design.md # This design document
+│
+├── src/
+│   ├── cli/
+│   │   ├── index.ts         # CLI entry point & test runner
+│   │   ├── commands.ts      # CLI command handlers
+│   │   ├── config.ts        # CLI configuration parser
+│   │   └── reporter.ts      # Test report generator
+│   │
+│   ├── server/
+│   │   ├── validation/
+│   │   │   └── index.ts     # Validation server entry
+│   │   │
+│   │   └── auth/
+│   │       └── index.ts     # Mock auth server entry
+│   │
+│   └── types.ts             # Shared type definitions
+│
+├── examples/
+│   └── typescript-client/
+│       ├── README.md        # Example documentation
+│       ├── package.json     # Example dependencies
+│       ├── test-client.ts   # Example TypeScript client
+│       └── tsconfig.json    # Example TS config
+│
+└── reports/                 # Generated test reports
+    └── ...
+```
+
 ## Implementation Phases
 
 ### Phase 1: Basic Framework
