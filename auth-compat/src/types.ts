@@ -15,6 +15,19 @@ export interface ComplianceReport {
   tests: TestResult[];
 }
 
+export interface HttpTrace {
+  timestamp: string;
+  method: string;
+  url: string;
+  headers: Record<string, any>;
+  body?: any;
+  response?: {
+    status: number;
+    headers?: Record<string, any>;
+    body?: any;
+  };
+}
+
 export interface ClientBehavior {
   connected: boolean;
   initialized: boolean;
@@ -24,6 +37,7 @@ export interface ClientBehavior {
   authMetadataRequested: boolean;
   authFlowCompleted: boolean;
   errors: string[];
+  httpTrace: HttpTrace[];
 }
 
 export interface ValidationServerConfig {

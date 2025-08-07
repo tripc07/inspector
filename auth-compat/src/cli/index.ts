@@ -162,11 +162,84 @@ function printCompactReport(report: ComplianceReport, behavior?: any) {
     });
   }
 
-  // Show detailed behavior only in verbose mode
+  // Show HTTP trace and detailed behavior in verbose mode
   if (behavior) {
-    console.log('\n  Client Behavior:');
-    console.log('  ' + JSON.stringify(behavior, null, 2).split('\n').join('\n  '));
+    // Show HTTP trace in wire format if available
+    if (behavior.httpTrace && behavior.httpTrace.length > 0) {
+      console.log('\n  ====== HTTP TRACE ======');
+      behavior.httpTrace.forEach((trace: any, index: number) => {
+        console.log(`\n  --- Request #${index + 1} ---`);
+        
+        // Request line
+        console.log(`  ${trace.method} ${trace.url} HTTP/1.1`);
+        
+        // Request headers
+        if (trace.headers) {
+          Object.entries(trace.headers).forEach(([key, value]) => {
+            console.log(`  ${key}: ${value}`);
+          });
+        }
+        
+        // Request body
+        if (trace.body) {
+          console.log('');
+          const bodyStr = typeof trace.body === 'string' ? trace.body : JSON.stringify(trace.body);
+          console.log(`  ${bodyStr}`);
+        }
+        
+        // Response
+        if (trace.response) {
+          console.log(`\n  HTTP/1.1 ${trace.response.status} ${getStatusText(trace.response.status)}`);
+          
+          // Response headers
+          if (trace.response.headers) {
+            Object.entries(trace.response.headers).forEach(([key, value]) => {
+              console.log(`  ${key}: ${value}`);
+            });
+          }
+          
+          // Response body
+          if (trace.response.body) {
+            console.log('');
+            const bodyStr = typeof trace.response.body === 'string' 
+              ? trace.response.body 
+              : JSON.stringify(trace.response.body);
+            
+            // Truncate very long responses
+            if (bodyStr.length > 1000) {
+              console.log(`  ${bodyStr.substring(0, 1000)}... [truncated]`);
+            } else {
+              console.log(`  ${bodyStr}`);
+            }
+          }
+        }
+        console.log('');
+      });
+      console.log('  ========================\n');
+    }
+    
+    // Show other behavior details
+    console.log('  Client Behavior Summary:');
+    const summaryBehavior = { ...behavior };
+    delete summaryBehavior.httpTrace; // Don't repeat the trace
+    console.log('  ' + JSON.stringify(summaryBehavior, null, 2).split('\n').join('\n  '));
   }
+}
+
+function getStatusText(status: number): string {
+  const statusTexts: Record<number, string> = {
+    200: 'OK',
+    201: 'Created',
+    202: 'Accepted',
+    302: 'Found',
+    400: 'Bad Request',
+    401: 'Unauthorized',
+    403: 'Forbidden',
+    404: 'Not Found',
+    405: 'Method Not Allowed',
+    500: 'Internal Server Error'
+  };
+  return statusTexts[status] || '';
 }
 
 program.parse();

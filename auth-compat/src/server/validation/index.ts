@@ -2,7 +2,10 @@ import express, { Request, Response } from 'express';
 import { Server } from 'http';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
+
 import { ClientBehavior, TestResult, ValidationServerConfig } from '../../types.js';
+import { MockAuthServer } from '../auth/index.js';
 import { z } from 'zod';
 
 export class ValidationServer {
@@ -10,6 +13,7 @@ export class ValidationServer {
   private server: Server | null = null;
   private clientBehavior: ClientBehavior;
   private config: ValidationServerConfig;
+  private authServer: MockAuthServer | null = null;
 
   constructor(config: ValidationServerConfig = {}) {
     this.config = {
@@ -18,6 +22,11 @@ export class ValidationServer {
       metadataLocation: config.metadataLocation || '/.well-known/oauth-authorization-server',
       mockAuthServerUrl: config.mockAuthServerUrl || 'http://localhost:3001'
     };
+
+    // Start auth server if auth is required
+    if (this.config.authRequired) {
+      this.authServer = new MockAuthServer(3001);
+    }
 
     this.app = express();
     this.app.use(express.json());
@@ -29,7 +38,8 @@ export class ValidationServer {
       requestsMade: [],
       authMetadataRequested: false,
       authFlowCompleted: false,
-      errors: []
+      errors: [],
+      httpTrace: []
     };
 
     this.setupRoutes();
@@ -70,10 +80,55 @@ export class ValidationServer {
   }
 
   private setupRoutes(): void {
+    // Capture all HTTP requests and responses
+    this.app.use((req, res, next) => {
+      const trace: any = {
+        timestamp: new Date().toISOString(),
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        body: req.body && Object.keys(req.body).length > 0 ? req.body : undefined
+      };
+
+      // Capture response using Buffer approach
+      const oldWrite = res.write;
+      const oldEnd = res.end;
+      const chunks: Buffer[] = [];
+
+      res.write = function (chunk) {
+        chunks.push(new Buffer(chunk));
+
+        oldWrite.apply(res, arguments);
+      };
+
+      res.end = function (chunk) {
+        if (chunk)
+          chunks.push(new Buffer(chunk));
+
+        var body = Buffer.concat(chunks).toString('utf8');
+        // console.log(req.path, body);
+        if (!trace.response) {
+          trace.response = {};
+        }
+        trace.response.body = body;
+
+
+
+        oldEnd.apply(res, arguments);
+      };
+
+      this.clientBehavior.httpTrace.push(trace);
+
+      next();
+    });
+
     // Health check endpoint
     this.app.get('/health', (req, res) => {
       res.json({ status: 'ok' });
     });
+
+    let bearerMiddleware;
+
 
     // OAuth metadata endpoint (if auth is required)
     if (this.config.authRequired) {
@@ -83,12 +138,17 @@ export class ValidationServer {
           issuer: this.config.mockAuthServerUrl,
           authorization_endpoint: `${this.config.mockAuthServerUrl}/authorize`,
           token_endpoint: `${this.config.mockAuthServerUrl}/token`,
-          jwks_uri: `${this.config.mockAuthServerUrl}/jwks`,
           response_types_supported: ['code'],
           grant_types_supported: ['authorization_code', 'refresh_token'],
-          code_challenge_methods_supported: ['S256'],
-          token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic']
+          code_challenge_methods_supported: ['S256']
         });
+      });
+
+      bearerMiddleware = requireBearerAuth({
+         verifier: tokenVerifier,
+         requiredScopes: [],
+         // This is for www-authenticate, need to handle disabling this
+         resourceMetadataUrl: this.config.metadataLocation!,
       });
     }
 
@@ -117,13 +177,23 @@ export class ValidationServer {
       // to ensure complete isolation
       try {
         const mcpServer = this.createMCPServer();
-        const transport = new StreamableHTTPServerTransport({
+
+        // Configure transport based on auth requirements
+        const transportConfig: any = {
           sessionIdGenerator: undefined, // No sessions in stateless mode
-        });
-        
+        };
+
+        // If auth is required, set the auth metadata URL
+        if (this.config.authRequired) {
+          const serverPort = this.getPort();
+          transportConfig.authMetadataUrl = `http://localhost:${serverPort}${this.config.metadataLocation}`;
+        }
+
+        const transport = new StreamableHTTPServerTransport(transportConfig);
+
         await mcpServer.connect(transport);
         await transport.handleRequest(req, res, req.body);
-        
+
         res.on('close', () => {
           transport.close();
           mcpServer.close();
@@ -177,6 +247,11 @@ export class ValidationServer {
   }
 
   async start(): Promise<number> {
+    // Start auth server first if needed
+    if (this.authServer) {
+      await this.authServer.start();
+    }
+
     return new Promise((resolve) => {
       this.server = this.app.listen(this.config.port, () => {
         const port = this.getPort();
@@ -187,6 +262,11 @@ export class ValidationServer {
   }
 
   async stop(): Promise<void> {
+    // Stop auth server if running
+    if (this.authServer) {
+      await this.authServer.stop();
+    }
+
     return new Promise((resolve) => {
       if (this.server) {
         this.server.close(() => {
