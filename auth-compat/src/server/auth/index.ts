@@ -3,6 +3,8 @@ import { Server } from 'http';
 import crypto from 'crypto';
 import { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { OAuthTokenVerifier } from '@modelcontextprotocol/sdk/server/auth/provider.js';
+import { createHttpTraceMiddleware, HttpTraceCollector } from '../../middleware/http-trace.js';
+import { HttpTrace } from '../../types.js';
 
 interface AuthorizationRequest {
   clientId: string;
@@ -22,10 +24,11 @@ const AUTH_CONSTANTS = {
   CLIENT_SECRET: 'test_client_secret',
 } as const;
 
-export class MockAuthServer {
+export class MockAuthServer implements HttpTraceCollector {
   private app: express.Application;
   private server: Server | null = null;
   private port: number;
+  public httpTrace: HttpTrace[] = [];
 
   // Store authorization requests for PKCE validation
   private authorizationRequests: Map<string, AuthorizationRequest> = new Map();
@@ -39,7 +42,10 @@ export class MockAuthServer {
   }
 
   private setupRoutes(): void {
-    // Log all requests to auth server
+    // Capture all HTTP requests and responses
+    this.app.use(createHttpTraceMiddleware(this));
+
+    // Log all requests to auth server (optional - can be removed if not needed)
     this.app.use((req, res, next) => {
       console.log(`\n[AUTH SERVER] >>> HTTP ${req.method} ${req.url}`);
       console.log('[AUTH SERVER] Headers:', JSON.stringify(req.headers, null, 2));
@@ -186,7 +192,6 @@ export class MockAuthServer {
       // Return a static client configuration
       res.status(201).json({
         client_id: AUTH_CONSTANTS.CLIENT_ID,
-        client_secret: AUTH_CONSTANTS.CLIENT_SECRET,
         client_name: client_name || 'Test Client',
         redirect_uris: redirect_uris || [],
         grant_types: ['authorization_code', 'refresh_token'],
@@ -238,6 +243,10 @@ export class MockAuthServer {
 
   getUrl(): string {
     return `http://localhost:${this.port}`;
+  }
+
+  getHttpTrace(): HttpTrace[] {
+    return this.httpTrace;
   }
 }
 

@@ -6,6 +6,7 @@ import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middlew
 
 import { ClientBehavior, TestResult, ValidationServerConfig } from '../../types.js';
 import { MockAuthServer, MockTokenVerifier } from '../auth/index.js';
+import { createHttpTraceMiddleware } from '../../middleware/http-trace.js';
 import { z } from 'zod';
 
 export class ValidationServer {
@@ -13,7 +14,7 @@ export class ValidationServer {
   private server: Server | null = null;
   private clientBehavior: ClientBehavior;
   private config: ValidationServerConfig;
-  private authServer: MockAuthServer | null = null;
+  public authServer: MockAuthServer | null = null;
 
   constructor(config: ValidationServerConfig = {}) {
     this.config = {
@@ -81,45 +82,7 @@ export class ValidationServer {
 
   private setupRoutes(): void {
     // Capture all HTTP requests and responses
-    this.app.use((req, res, next) => {
-      const trace: any = {
-        timestamp: new Date().toISOString(),
-        method: req.method,
-        url: req.url,
-        headers: req.headers,
-        body: req.body && Object.keys(req.body).length > 0 ? req.body : undefined
-      };
-
-      // Capture response using Buffer approach
-      const oldWrite = res.write;
-      const oldEnd = res.end;
-      const chunks: Buffer[] = [];
-
-      res.write = function (chunk) {
-        chunks.push(Buffer.from(chunk));
-        return oldWrite.apply(res, arguments);
-      };
-
-      res.end = function (chunk) {
-        if (chunk)
-          chunks.push(Buffer.from(chunk));
-
-        var body = Buffer.concat(chunks).toString('utf8');
-
-        // Capture response details
-        trace.response = {
-          status: res.statusCode,
-          headers: res.getHeaders(),
-          body: body
-        };
-
-        return oldEnd.apply(res, arguments);
-      };
-
-      this.clientBehavior.httpTrace.push(trace);
-
-      next();
-    });
+    this.app.use(createHttpTraceMiddleware(this.clientBehavior));
 
     // Health check endpoint
     this.app.get('/health', (req, res) => {
@@ -138,6 +101,7 @@ export class ValidationServer {
           issuer: this.config.mockAuthServerUrl,
           authorization_endpoint: `${this.config.mockAuthServerUrl}/authorize`,
           token_endpoint: `${this.config.mockAuthServerUrl}/token`,
+          registration_endpoint: `${this.config.mockAuthServerUrl}/register`,
           response_types_supported: ['code'],
           grant_types_supported: ['authorization_code', 'refresh_token'],
           code_challenge_methods_supported: ['S256']

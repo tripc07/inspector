@@ -109,6 +109,9 @@ async function runSingleTest(
     // Get validation results
     const results = server.getValidationResults();
     const behavior = server.getClientBehavior();
+    
+    // Get auth server trace if auth was required
+    const authServerTrace = authRequired && server.authServer ? server.authServer.getHttpTrace() : [];
 
     // Generate report
     const report: ComplianceReport = {
@@ -125,7 +128,7 @@ async function runSingleTest(
     if (options.json) {
       console.log(JSON.stringify(report, null, 2));
     } else {
-      printCompactReport(report, verbose ? behavior : null);
+      printCompactReport(report, verbose ? behavior : null, verbose ? authServerTrace : null);
     }
 
     // Stop server
@@ -142,7 +145,7 @@ async function runSingleTest(
   }
 }
 
-function printCompactReport(report: ComplianceReport, behavior?: any) {
+function printCompactReport(report: ComplianceReport, behavior?: any, authServerTrace?: any[]) {
   const passed = report.overall_result === 'PASS';
   const icon = passed ? '✅' : '❌';
 
@@ -164,9 +167,9 @@ function printCompactReport(report: ComplianceReport, behavior?: any) {
 
   // Show HTTP trace and detailed behavior in verbose mode
   if (behavior) {
-    // Show HTTP trace in wire format if available
+    // Show validation server HTTP trace in wire format if available
     if (behavior.httpTrace && behavior.httpTrace.length > 0) {
-      console.log('\n  ====== HTTP TRACE ======');
+      console.log('\n  ====== VALIDATION SERVER HTTP TRACE ======');
       behavior.httpTrace.forEach((trace: any, index: number) => {
         console.log(`\n  --- Request #${index + 1} ---`);
 
@@ -205,6 +208,60 @@ function printCompactReport(report: ComplianceReport, behavior?: any) {
               ? trace.response.body
               : JSON.stringify(trace.response.body);
 
+            // Truncate very long responses
+            if (bodyStr.length > 1000) {
+              console.log(`  ${bodyStr.substring(0, 1000)}... [truncated]`);
+            } else {
+              console.log(`  ${bodyStr}`);
+            }
+          }
+        }
+        console.log('');
+      });
+      console.log('  ========================\n');
+    }
+    
+    // Show auth server HTTP trace if available
+    if (authServerTrace && authServerTrace.length > 0) {
+      console.log('\n  ====== AUTH SERVER HTTP TRACE ======');
+      authServerTrace.forEach((trace: any, index: number) => {
+        console.log(`\n  --- Request #${index + 1} ---`);
+        
+        // Request line
+        console.log(`  ${trace.method} ${trace.url} HTTP/1.1`);
+        
+        // Request headers
+        if (trace.headers) {
+          Object.entries(trace.headers).forEach(([key, value]) => {
+            console.log(`  ${key}: ${value}`);
+          });
+        }
+        
+        // Request body
+        if (trace.body) {
+          console.log('');
+          const bodyStr = typeof trace.body === 'string' ? trace.body : JSON.stringify(trace.body);
+          console.log(`  ${bodyStr}`);
+        }
+        
+        // Response
+        if (trace.response) {
+          console.log(`\n  HTTP/1.1 ${trace.response.status} ${getStatusText(trace.response.status)}`);
+          
+          // Response headers
+          if (trace.response.headers) {
+            Object.entries(trace.response.headers).forEach(([key, value]) => {
+              console.log(`  ${key}: ${value}`);
+            });
+          }
+          
+          // Response body
+          if (trace.response.body) {
+            console.log('');
+            const bodyStr = typeof trace.response.body === 'string'
+              ? trace.response.body
+              : JSON.stringify(trace.response.body);
+            
             // Truncate very long responses
             if (bodyStr.length > 1000) {
               console.log(`  ${bodyStr.substring(0, 1000)}... [truncated]`);
