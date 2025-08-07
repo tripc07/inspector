@@ -45,4 +45,5 @@ export interface ValidationServerConfig {
   authRequired?: boolean;
   metadataLocation?: string;  // Location for protected resource metadata
   authServerMetadataLocation?: string;  // Location for auth server metadata (passed to mock auth server)
+  includeWwwAuthenticate?: boolean;  // Whether to include resource_metadata in WWW-Authenticate header
 }

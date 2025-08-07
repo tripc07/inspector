@@ -23,7 +23,8 @@ export class ValidationServer {
       port: config.port || 0, // 0 means random port
       authRequired: config.authRequired || false,
       metadataLocation: config.metadataLocation || '/.well-known/oauth-protected-resource',
-      authServerMetadataLocation: config.authServerMetadataLocation || '/.well-known/oauth-authorization-server'
+      authServerMetadataLocation: config.authServerMetadataLocation || '/.well-known/oauth-authorization-server',
+      includeWwwAuthenticate: config.includeWwwAuthenticate !== false  // Default true
     };
 
     // Start auth server if auth is required
@@ -121,7 +122,9 @@ export class ValidationServer {
       // We'll set the full URL dynamically in the middleware
       bearerMiddleware = async (req: Request, res: Response, next: any) => {
         const serverPort = this.getPort();
-        const resourceMetadataUrl = `http://localhost:${serverPort}${this.config.metadataLocation}`;
+        const resourceMetadataUrl = this.config.includeWwwAuthenticate 
+          ? `http://localhost:${serverPort}${this.config.metadataLocation}`
+          : undefined;
         const middleware = requireBearerAuth({
           verifier: tokenVerifier,
           requiredScopes: [],
