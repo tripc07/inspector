@@ -34,7 +34,7 @@ export class MockAuthServer implements HttpTraceCollector {
   // Store authorization requests for PKCE validation
   private authorizationRequests: Map<string, AuthorizationRequest> = new Map();
 
-  constructor(port: number = 3001, verbose: boolean = false) {
+  constructor(port: number = 0, verbose: boolean = false, public metadataLocation: string = '/.well-known/oauth-authorization-server') {
     this.port = port;
     this.verbose = verbose;
     this.app = express();
@@ -52,6 +52,21 @@ export class MockAuthServer implements HttpTraceCollector {
   private setupRoutes(): void {
     // Capture all HTTP requests and responses
     this.app.use(createHttpTraceMiddleware(this));
+
+    // OAuth Authorization Server Metadata endpoint
+    this.app.get(this.metadataLocation, (req: Request, res: Response) => {
+      const serverUrl = this.getUrl();
+      res.json({
+        issuer: serverUrl,
+        authorization_endpoint: `${serverUrl}/authorize`,
+        token_endpoint: `${serverUrl}/token`,
+        registration_endpoint: `${serverUrl}/register`,
+        response_types_supported: ['code'],
+        grant_types_supported: ['authorization_code', 'refresh_token'],
+        code_challenge_methods_supported: ['S256'],
+        token_endpoint_auth_methods_supported: ['none', 'client_secret_post']
+      });
+    });
 
     // OAuth2 authorization endpoint
     this.app.get('/authorize', (req: Request, res: Response) => {
@@ -219,7 +234,8 @@ export class MockAuthServer implements HttpTraceCollector {
   async start(): Promise<void> {
     return new Promise((resolve) => {
       this.server = this.app.listen(this.port, () => {
-        this.log(`Started on port ${this.port}`);
+        const actualPort = this.getPort();
+        this.log(`Started on port ${actualPort}`);
         resolve();
       });
     });
@@ -239,7 +255,18 @@ export class MockAuthServer implements HttpTraceCollector {
   }
 
   getUrl(): string {
-    return `http://localhost:${this.port}`;
+    return `http://localhost:${this.getPort()}`;
+  }
+
+  getPort(): number {
+    if (!this.server) {
+      throw new Error('Server not started');
+    }
+    const address = this.server.address();
+    if (typeof address === 'object' && address !== null) {
+      return address.port;
+    }
+    throw new Error('Unable to get server port');
   }
 
   getHttpTrace(): HttpTrace[] {

@@ -43,6 +43,6 @@ export interface ClientBehavior {
 export interface ValidationServerConfig {
   port?: number;
   authRequired?: boolean;
-  metadataLocation?: string;
-  mockAuthServerUrl?: string;
+  metadataLocation?: string;  // Location for protected resource metadata
+  authServerMetadataLocation?: string;  // Location for auth server metadata (passed to mock auth server)
 }

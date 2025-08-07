@@ -22,13 +22,13 @@ export class ValidationServer {
     this.config = {
       port: config.port || 0, // 0 means random port
       authRequired: config.authRequired || false,
-      metadataLocation: config.metadataLocation || '/.well-known/oauth-authorization-server',
-      mockAuthServerUrl: config.mockAuthServerUrl || 'http://localhost:3001'
+      metadataLocation: config.metadataLocation || '/.well-known/oauth-protected-resource',
+      authServerMetadataLocation: config.authServerMetadataLocation || '/.well-known/oauth-authorization-server'
     };
 
     // Start auth server if auth is required
     if (this.config.authRequired) {
-      this.authServer = new MockAuthServer(3001, this.verbose);
+      this.authServer = new MockAuthServer(0, this.verbose, this.config.authServerMetadataLocation);
     }
 
     this.app = express();
@@ -97,32 +97,38 @@ export class ValidationServer {
       res.json({ status: 'ok' });
     });
 
-    let bearerMiddleware = (req, res, next) => {
-      next()
-    }
-
-    // OAuth metadata endpoint (if auth is required)
+    // OAuth Protected Resource metadata endpoint (if auth is required)
     if (this.config.authRequired) {
       this.app.get(this.config.metadataLocation!, (req, res) => {
         this.clientBehavior.authMetadataRequested = true;
+
+        // Get the actual port at request time
+        const serverPort = this.getPort();
+        const authServerUrl = this.authServer ? this.authServer.getUrl() : '';
+
+        // Serve OAuth Protected Resource Metadata (RFC 9728)
         res.json({
-          issuer: this.config.mockAuthServerUrl,
-          authorization_endpoint: `${this.config.mockAuthServerUrl}/authorize`,
-          token_endpoint: `${this.config.mockAuthServerUrl}/token`,
-          registration_endpoint: `${this.config.mockAuthServerUrl}/register`,
-          response_types_supported: ['code'],
-          grant_types_supported: ['authorization_code', 'refresh_token'],
-          code_challenge_methods_supported: ['S256']
+          resource: `http://localhost:${serverPort}`,
+          authorization_servers: authServerUrl ? [authServerUrl] : []
         });
       });
+    }
 
+    // Create bearer auth middleware if auth is required
+    let bearerMiddleware = async (req: Request, res: Response, next: any) => next();
+    if (this.config.authRequired) {
       const tokenVerifier = new MockTokenVerifier();
-      bearerMiddleware = requireBearerAuth({
-         verifier: tokenVerifier,
-         requiredScopes: [],
-         // This is for www-authenticate, need to handle disabling this
-         resourceMetadataUrl: this.config.metadataLocation!,
-      });
+      // We'll set the full URL dynamically in the middleware
+      bearerMiddleware = async (req: Request, res: Response, next: any) => {
+        const serverPort = this.getPort();
+        const resourceMetadataUrl = `http://localhost:${serverPort}${this.config.metadataLocation}`;
+        const middleware = requireBearerAuth({
+          verifier: tokenVerifier,
+          requiredScopes: [],
+          resourceMetadataUrl: resourceMetadataUrl
+        });
+        return middleware(req, res, next);
+      };
     }
 
     // MCP POST endpoint - stateless mode
@@ -156,10 +162,10 @@ export class ValidationServer {
           sessionIdGenerator: undefined, // No sessions in stateless mode
         };
 
-        // If auth is required, set the auth metadata URL
+        // If auth is required, set the protected resource metadata URL
         if (this.config.authRequired) {
           const serverPort = this.getPort();
-          transportConfig.authMetadataUrl = `http://localhost:${serverPort}${this.config.metadataLocation}`;
+          transportConfig.resourceMetadataUrl = `http://localhost:${serverPort}${this.config.metadataLocation}`;
         }
 
         const transport = new StreamableHTTPServerTransport(transportConfig);
@@ -222,6 +228,7 @@ export class ValidationServer {
     // Start auth server first if needed
     if (this.authServer) {
       await this.authServer.start();
+      this.log(`Auth server started at ${this.authServer.getUrl()}`);
     }
 
     return new Promise((resolve) => {
