@@ -129,3 +129,8 @@ auth-compat/
 - Token refresh testing
 - Custom grant types
 - Performance metrics
+
+
+### Future todo
+
+- Need to handle client info, e.g. what redirect url the client will expect responses on.

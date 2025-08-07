@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli/index.ts",
-    "test-validation-server": "tsx src/test-validation-server.ts"
+    "test-validation-server": "tsx src/test-validation-server.ts",
+    "cli": "tsx src/cli/index.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
