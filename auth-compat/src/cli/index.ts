@@ -3,7 +3,8 @@
 import { Command } from 'commander';
 import { spawn } from 'child_process';
 import { ValidationServer } from '../server/validation/index.js';
-import { ComplianceReport } from '../types.js';
+import { ComplianceReport, HttpTrace } from '../types.js';
+import { displayTraces } from '../middleware/http-trace.js';
 
 const program = new Command();
 
@@ -82,23 +83,21 @@ async function runSingleTest(
 
     // Run the client
     const clientProcess = spawn(executable, args, {
-      stdio: verbose ? 'inherit' : 'pipe',
+      stdio: 'pipe',
       shell: true,
       timeout
     });
 
-    // Capture stdout/stderr when not in verbose mode
-    if (!verbose) {
-      if (clientProcess.stdout) {
-        clientProcess.stdout.on('data', (data) => {
-          clientStdout += data.toString();
-        });
-      }
-      if (clientProcess.stderr) {
-        clientProcess.stderr.on('data', (data) => {
-          clientStderr += data.toString();
-        });
-      }
+    // Capture stdout/stderr
+    if (clientProcess.stdout) {
+      clientProcess.stdout.on('data', (data) => {
+        clientStdout += data.toString();
+      });
+    }
+    if (clientProcess.stderr) {
+      clientProcess.stderr.on('data', (data) => {
+        clientStderr += data.toString();
+      });
     }
 
     // Wait for client to finish
@@ -146,8 +145,8 @@ async function runSingleTest(
     if (options.json) {
       console.log(JSON.stringify(report, null, 2));
     } else {
-      const clientOutput = verbose ? { stdout: clientStdout, stderr: clientStderr } : null;
-      printCompactReport(report, verbose ? behavior : null, verbose ? authServerTrace : null, clientOutput);
+      const clientOutput = { stdout: clientStdout, stderr: clientStderr };
+      printCompactReport(report, verbose ? behavior : null, verbose ? authServerTrace : undefined, clientOutput);
     }
 
     // Stop server
@@ -164,60 +163,7 @@ async function runSingleTest(
   }
 }
 
-function printHttpTrace(traces: any[], label: string) {
-  console.log(`\n  ====== ${label} ======`);
-  traces.forEach((trace: any, index: number) => {
-    console.log(`\n  --- Request #${index + 1} ---`);
-
-    // Request line
-    console.log(`  ${trace.method} ${trace.url} HTTP/1.1`);
-
-    // Request headers
-    if (trace.headers) {
-      Object.entries(trace.headers).forEach(([key, value]) => {
-        console.log(`  ${key}: ${value}`);
-      });
-    }
-
-    // Request body
-    if (trace.body) {
-      console.log('');
-      const bodyStr = typeof trace.body === 'string' ? trace.body : JSON.stringify(trace.body);
-      console.log(`  ${bodyStr}`);
-    }
-
-    // Response
-    if (trace.response) {
-      console.log(`\n  HTTP/1.1 ${trace.response.status} ${getStatusText(trace.response.status)}`);
-
-      // Response headers
-      if (trace.response.headers) {
-        Object.entries(trace.response.headers).forEach(([key, value]) => {
-          console.log(`  ${key}: ${value}`);
-        });
-      }
-
-      // Response body
-      if (trace.response.body) {
-        console.log('');
-        const bodyStr = typeof trace.response.body === 'string'
-          ? trace.response.body
-          : JSON.stringify(trace.response.body);
-
-        // Truncate very long responses
-        if (bodyStr.length > 1000) {
-          console.log(`  ${bodyStr.substring(0, 1000)}... [truncated]`);
-        } else {
-          console.log(`  ${bodyStr}`);
-        }
-      }
-    }
-    console.log('');
-  });
-  console.log('  ========================\n');
-}
-
-function printCompactReport(report: ComplianceReport, behavior?: any, authServerTrace?: any[], clientOutput?: { stdout: string, stderr: string }) {
+function printCompactReport(report: ComplianceReport, behavior?: any, authServerTrace?: HttpTrace[], clientOutput?: { stdout: string, stderr: string }) {
   const passed = report.overall_result === 'PASS';
   const icon = passed ? '✅' : '❌';
 
@@ -239,80 +185,7 @@ function printCompactReport(report: ComplianceReport, behavior?: any, authServer
 
   // Show HTTP trace and detailed behavior in verbose mode
   if (behavior) {
-    // Collect all traces and interleave them by timestamp
-    const allTraces: any[] = [];
-
-    // Add validation server traces with source label
-    if (behavior.httpTrace && behavior.httpTrace.length > 0) {
-      behavior.httpTrace.forEach((trace: any) => {
-        allTraces.push({ ...trace, source: 'VALIDATION' });
-      });
-    }
-
-    // Add auth server traces with source label
-    if (authServerTrace && authServerTrace.length > 0) {
-      authServerTrace.forEach((trace: any) => {
-        allTraces.push({ ...trace, source: 'AUTH' });
-      });
-    }
-
-    // Sort all traces by timestamp for interleaved view
-    if (allTraces.length > 0) {
-      allTraces.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-      // Print interleaved traces
-      console.log('\n  ====== INTERLEAVED HTTP TRACE ======');
-      allTraces.forEach((trace: any, index: number) => {
-        console.log(`\n  --- [${trace.source}] Request #${index + 1} ---`);
-        console.log(`  Timestamp: ${trace.timestamp}`);
-
-        // Request line
-        console.log(`  ${trace.method} ${trace.url} HTTP/1.1`);
-
-        // Request headers
-        if (trace.headers) {
-          Object.entries(trace.headers).forEach(([key, value]) => {
-            console.log(`  ${key}: ${value}`);
-          });
-        }
-
-        // Request body
-        if (trace.body) {
-          console.log('');
-          const bodyStr = typeof trace.body === 'string' ? trace.body : JSON.stringify(trace.body);
-          console.log(`  ${bodyStr}`);
-        }
-
-        // Response
-        if (trace.response) {
-          console.log(`\n  HTTP/1.1 ${trace.response.status} ${getStatusText(trace.response.status)}`);
-
-          // Response headers
-          if (trace.response.headers) {
-            Object.entries(trace.response.headers).forEach(([key, value]) => {
-              console.log(`  ${key}: ${value}`);
-            });
-          }
-
-          // Response body
-          if (trace.response.body) {
-            console.log('');
-            const bodyStr = typeof trace.response.body === 'string'
-              ? trace.response.body
-              : JSON.stringify(trace.response.body);
-
-            // Truncate very long responses
-            if (bodyStr.length > 1000) {
-              console.log(`  ${bodyStr.substring(0, 1000)}... [truncated]`);
-            } else {
-              console.log(`  ${bodyStr}`);
-            }
-          }
-        }
-        console.log('');
-      });
-      console.log('  ========================\n');
-    }
+    displayTraces(behavior.httpTrace, authServerTrace || [])
 
     // Show other behavior details
     console.log('  Client Behavior Summary:');
@@ -329,7 +202,7 @@ function printCompactReport(report: ComplianceReport, behavior?: any, authServer
       console.log('  ' + clientOutput.stdout.split('\n').join('\n  '));
       console.log('  ========================\n');
     }
-    
+
     if (clientOutput.stderr) {
       console.log('\n  ====== CLIENT STDERR ======');
       console.log('  ' + clientOutput.stderr.split('\n').join('\n  '));
@@ -338,20 +211,6 @@ function printCompactReport(report: ComplianceReport, behavior?: any, authServer
   }
 }
 
-function getStatusText(status: number): string {
-  const statusTexts: Record<number, string> = {
-    200: 'OK',
-    201: 'Created',
-    202: 'Accepted',
-    302: 'Found',
-    400: 'Bad Request',
-    401: 'Unauthorized',
-    403: 'Forbidden',
-    404: 'Not Found',
-    405: 'Method Not Allowed',
-    500: 'Internal Server Error'
-  };
-  return statusTexts[status] || '';
-}
+
 
 program.parse();
