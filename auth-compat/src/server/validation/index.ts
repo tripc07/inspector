@@ -15,8 +15,10 @@ export class ValidationServer {
   private clientBehavior: ClientBehavior;
   private config: ValidationServerConfig;
   public authServer: MockAuthServer | null = null;
+  private verbose: boolean = false;
 
-  constructor(config: ValidationServerConfig = {}) {
+  constructor(config: ValidationServerConfig = {}, verbose: boolean = false) {
+    this.verbose = verbose;
     this.config = {
       port: config.port || 0, // 0 means random port
       authRequired: config.authRequired || false,
@@ -26,7 +28,7 @@ export class ValidationServer {
 
     // Start auth server if auth is required
     if (this.config.authRequired) {
-      this.authServer = new MockAuthServer(3001);
+      this.authServer = new MockAuthServer(3001, this.verbose);
     }
 
     this.app = express();
@@ -44,6 +46,12 @@ export class ValidationServer {
     };
 
     this.setupRoutes();
+  }
+
+  private log(...args: any[]): void {
+    if (this.verbose) {
+      console.log('[VALIDATION SERVER]', ...args);
+    }
   }
 
   private createMCPServer(): McpServer {
@@ -165,7 +173,7 @@ export class ValidationServer {
         });
       } catch (error) {
         this.clientBehavior.errors.push(`Request error: ${error}`);
-        console.error('Error handling MCP request:', error);
+        this.log('Error handling MCP request:', error);
         if (!res.headersSent) {
           res.status(500).json({
             jsonrpc: '2.0',
@@ -181,7 +189,6 @@ export class ValidationServer {
 
     // MCP GET endpoint - not supported in stateless mode
     this.app.get('/mcp', async (req: Request, res: Response) => {
-      console.log('Received GET MCP request (not supported in stateless mode)');
       res.writeHead(405).end(JSON.stringify({
         jsonrpc: "2.0",
         error: {
@@ -220,7 +227,7 @@ export class ValidationServer {
     return new Promise((resolve) => {
       this.server = this.app.listen(this.config.port, () => {
         const port = this.getPort();
-        console.log(`Validation server started on port ${port} (stateless mode)`);
+        this.log(`Started on port ${port} (stateless mode)`);
         resolve(port);
       });
     });
@@ -235,7 +242,7 @@ export class ValidationServer {
     return new Promise((resolve) => {
       if (this.server) {
         this.server.close(() => {
-          console.log('Validation server stopped');
+          this.log('Stopped');
           resolve();
         });
       } else {

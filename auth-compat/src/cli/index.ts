@@ -61,7 +61,7 @@ async function runSingleTest(
   const verbose = options.verbose;
 
   // Start validation server
-  const server = new ValidationServer({ authRequired });
+  const server = new ValidationServer({ authRequired }, verbose);
 
   try {
     const serverPort = await server.start();
@@ -146,7 +146,7 @@ async function runSingleTest(
     if (options.json) {
       console.log(JSON.stringify(report, null, 2));
     } else {
-      const clientOutput = { stdout: clientStdout, stderr: clientStderr };
+      const clientOutput = verbose ? { stdout: clientStdout, stderr: clientStderr } : null;
       printCompactReport(report, verbose ? behavior : null, verbose ? authServerTrace : null, clientOutput);
     }
 

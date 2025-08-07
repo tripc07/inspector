@@ -29,16 +29,24 @@ export class MockAuthServer implements HttpTraceCollector {
   private server: Server | null = null;
   private port: number;
   public httpTrace: HttpTrace[] = [];
+  private verbose: boolean;
 
   // Store authorization requests for PKCE validation
   private authorizationRequests: Map<string, AuthorizationRequest> = new Map();
 
-  constructor(port: number = 3001) {
+  constructor(port: number = 3001, verbose: boolean = false) {
     this.port = port;
+    this.verbose = verbose;
     this.app = express();
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
     this.setupRoutes();
+  }
+
+  private log(...args: any[]): void {
+    if (this.verbose) {
+      console.log('[AUTH SERVER]', ...args);
+    }
   }
 
   private setupRoutes(): void {
@@ -87,7 +95,6 @@ export class MockAuthServer implements HttpTraceCollector {
         redirectUrl.searchParams.set('state', state);
       }
 
-      console.log(`Mock auth server: Redirecting to ${redirectUrl.toString()}`);
       res.redirect(redirectUrl.toString());
     });
 
@@ -212,7 +219,7 @@ export class MockAuthServer implements HttpTraceCollector {
   async start(): Promise<void> {
     return new Promise((resolve) => {
       this.server = this.app.listen(this.port, () => {
-        console.log(`Mock auth server started on port ${this.port}`);
+        this.log(`Started on port ${this.port}`);
         resolve();
       });
     });
@@ -222,7 +229,7 @@ export class MockAuthServer implements HttpTraceCollector {
     return new Promise((resolve) => {
       if (this.server) {
         this.server.close(() => {
-          console.log('Mock auth server stopped');
+          this.log('Stopped');
           resolve();
         });
       } else {
