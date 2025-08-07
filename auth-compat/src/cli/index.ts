@@ -1,216 +1,162 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { spawn } from 'child_process';
-import { ValidationServer } from '../server/validation/index.js';
-import { ComplianceReport, HttpTrace } from '../types.js';
-import { displayTraces } from '../middleware/http-trace.js';
+import { ComplianceTestRunner, TestSuite } from '../test-framework/index.js';
 
 const program = new Command();
 
 program
-  .name('mcp-auth-compat')
-  .description('MCP Authorization Compliance Checker')
+  .name('mcp-auth-test')
+  .description('MCP Authorization Compliance Test Runner')
   .version('1.0.0');
 
 program
-  .argument('<command>', 'Command to run the client (should accept server URL as argument)')
+  .requiredOption('--command <command>', 'Command to run the client (should accept server URL as argument)')
+  .option('--suite <name>', 'Run specific test suite (basic, oauth, metadata, behavior, all)', 'all')
   .option('--timeout <ms>', 'Timeout for client execution in milliseconds', '30000')
   .option('--json', 'Output results as JSON', false)
   .option('--verbose', 'Verbose output', false)
   .action(async (clientCommand: string, options) => {
-    await runComplianceTests(clientCommand, options);
+    await runTests(clientCommand, options);
   });
 
-async function runComplianceTests(clientCommand: string, options: any) {
+// Test suite definitions
+const basicSuite: TestSuite = {
+  name: 'Basic Compliance',
+  description: 'Tests basic MCP protocol compliance without authentication',
+  scenarios: [
+    {
+      name: 'Basic MCP Connection',
+      description: 'Client can connect and list tools without auth',
+      serverConfig: {
+        authRequired: false
+      },
+      expectedResult: 'PASS'
+    }
+  ]
+};
+
+const oauthSuite: TestSuite = {
+  name: 'OAuth Compliance',
+  description: 'Tests OAuth2/OIDC authorization flow',
+  scenarios: [
+    {
+      name: 'Standard OAuth Flow',
+      description: 'Client completes OAuth flow with default settings',
+      serverConfig: {
+        authRequired: true
+      },
+      expectedResult: 'PASS'
+    }
+  ]
+};
+
+const metadataLocationSuite: TestSuite = {
+  name: 'Metadata Location Tests',
+  description: 'Tests different OAuth protected resource metadata locations',
+  scenarios: [
+    {
+      name: 'Standard location with WWW-Authenticate',
+      serverConfig: {
+        authRequired: true,
+        metadataLocation: '/.well-known/oauth-protected-resource',
+        includeWwwAuthenticate: true
+      },
+      expectedResult: 'PASS'
+    },
+    {
+      name: 'Non-standard location with WWW-Authenticate',
+      description: 'Custom metadata path advertised via WWW-Authenticate header',
+      serverConfig: {
+        authRequired: true,
+        metadataLocation: '/custom/oauth/metadata',
+        includeWwwAuthenticate: true
+      },
+      expectedResult: 'PASS'
+    },
+    {
+      name: 'Nested well-known path with WWW-Authenticate',
+      serverConfig: {
+        authRequired: true,
+        metadataLocation: '/.well-known/oauth-protected-resource/mcp',
+        includeWwwAuthenticate: true
+      },
+      expectedResult: 'PASS'
+    },
+    {
+      name: 'Standard location without WWW-Authenticate',
+      description: 'Client should find metadata at standard location',
+      serverConfig: {
+        authRequired: true,
+        metadataLocation: '/.well-known/oauth-protected-resource',
+        includeWwwAuthenticate: false
+      },
+      expectedResult: 'PASS'
+    },
+    {
+      name: 'Non-standard location without WWW-Authenticate',
+      description: 'Client cannot find metadata without header hint',
+      serverConfig: {
+        authRequired: true,
+        metadataLocation: '/custom/oauth/metadata',
+        includeWwwAuthenticate: false
+      },
+      expectedResult: 'FAIL'  // Should fail - client won't find non-standard location
+    }
+  ]
+};
+
+const behaviorSuite: TestSuite = {
+  name: 'Client Behavior Validation',
+  description: 'Tests specific client behaviors',
+  scenarios: [
+    {
+      name: 'Client requests metadata',
+      serverConfig: {
+        authRequired: true
+      },
+      expectedResult: 'PASS',
+      validateBehavior: (behavior) => {
+        const errors = [];
+        if (!behavior.authMetadataRequested) {
+          errors.push('Client did not request OAuth metadata');
+        }
+        if (!behavior.initialized) {
+          errors.push('Client did not complete initialization');
+        }
+        return errors;
+      }
+    }
+  ]
+};
+
+async function runTests(options: any) {
   const verbose = options.verbose;
-  const timeout = parseInt(options.timeout, 10);
+  const runner = new ComplianceTestRunner(options.command, { verbose, json: options.json });
 
   console.log('Running MCP compliance tests...');
 
-  const allTestsPassed: boolean[] = [];
+  // Select which suites to run
+  let suitesToRun: TestSuite[] = [];
 
-  // Run basic test (no auth)
-  console.log('\n[1/2] Basic compliance test');
-  const basicPassed = await runSingleTest(clientCommand, false, timeout, options);
-  allTestsPassed.push(basicPassed);
+  const suiteMap: Record<string, TestSuite> = {
+    'basic': basicSuite,
+    'oauth': oauthSuite,
+    'metadata': metadataLocationSuite,
+    'behavior': behaviorSuite
+  };
 
-  // Run auth test
-  console.log('\n[2/2] Authorization compliance test');
-  const authPassed = await runSingleTest(clientCommand, true, timeout, options);
-  allTestsPassed.push(authPassed);
-
-  // Overall summary
-  const overallPass = allTestsPassed.every(p => p);
-  console.log('\n' + '='.repeat(40));
-  if (overallPass) {
-    console.log('✅ All tests PASSED');
+  if (options.suite === 'all') {
+    suitesToRun = [basicSuite, oauthSuite, metadataLocationSuite, behaviorSuite];
+  } else if (suiteMap[options.suite]) {
+    suitesToRun = [suiteMap[options.suite]];
   } else {
-    console.log('❌ Some tests FAILED');
+    console.error(`Unknown suite: ${options.suite}`);
+    console.error(`Available suites: ${Object.keys(suiteMap).join(', ')}, all`);
+    process.exit(1);
   }
-  console.log('='.repeat(40));
 
-  process.exit(overallPass ? 0 : 1);
+  await runner.runSuites(suitesToRun);
 }
-
-async function runSingleTest(
-  clientCommand: string,
-  authRequired: boolean,
-  timeout: number,
-  options: any
-): Promise<boolean> {
-  const verbose = options.verbose;
-
-  // Start validation server
-  const server = new ValidationServer({ authRequired }, verbose);
-
-  try {
-    const serverPort = await server.start();
-    const serverUrl = `http://localhost:${serverPort}/mcp`;
-
-    if (verbose) {
-      console.log(`  Server: ${serverUrl}`);
-    }
-
-    // Parse the client command to separate the executable from its arguments
-    const commandParts = clientCommand.split(' ');
-    const executable = commandParts[0];
-    const args = [...commandParts.slice(1), serverUrl];
-
-    // Capture client output when not in verbose mode (verbose mode uses 'inherit')
-    let clientStdout = '';
-    let clientStderr = '';
-
-    // Run the client
-    const clientProcess = spawn(executable, args, {
-      stdio: 'pipe',
-      shell: true,
-      timeout
-    });
-
-    // Capture stdout/stderr
-    if (clientProcess.stdout) {
-      clientProcess.stdout.on('data', (data) => {
-        clientStdout += data.toString();
-      });
-    }
-    if (clientProcess.stderr) {
-      clientProcess.stderr.on('data', (data) => {
-        clientStderr += data.toString();
-      });
-    }
-
-    // Wait for client to finish
-    const clientExitCode = await new Promise<number>((resolve, reject) => {
-      let timedOut = false;
-
-      const timeoutHandle = setTimeout(() => {
-        timedOut = true;
-        clientProcess.kill();
-        reject(new Error(`Timeout (${timeout}ms)`));
-      }, timeout);
-
-      clientProcess.on('exit', (code) => {
-        clearTimeout(timeoutHandle);
-        if (!timedOut) {
-          resolve(code || 0);
-        }
-      });
-
-      clientProcess.on('error', (error) => {
-        clearTimeout(timeoutHandle);
-        reject(error);
-      });
-    });
-
-    // Get validation results
-    const results = server.getValidationResults();
-    const behavior = server.getClientBehavior();
-
-    // Get auth server trace if auth was required
-    const authServerTrace = authRequired && server.authServer ? server.authServer.getHttpTrace() : [];
-
-    // Generate report
-    const report: ComplianceReport = {
-      overall_result: results.every(r => r.result === 'PASS') && clientExitCode === 0 ? 'PASS' : 'FAIL',
-      test_suite: authRequired ? 'authorization-compliance' : 'basic-compliance',
-      timestamp: new Date().toISOString(),
-      client_command: clientCommand,
-      tests_passed: results.filter(r => r.result === 'PASS').length,
-      tests_failed: results.filter(r => r.result === 'FAIL').length,
-      tests: results
-    };
-
-    // Output results
-    if (options.json) {
-      console.log(JSON.stringify(report, null, 2));
-    } else {
-      const clientOutput = { stdout: clientStdout, stderr: clientStderr };
-      printCompactReport(report, verbose ? behavior : null, verbose ? authServerTrace : undefined, clientOutput);
-    }
-
-    // Stop server
-    await server.stop();
-
-    return report.overall_result === 'PASS';
-
-  } catch (error: any) {
-    console.log(`  ❌ FAIL: ${error.message || error}`);
-    if (server) {
-      await server.stop();
-    }
-    return false;
-  }
-}
-
-function printCompactReport(report: ComplianceReport, behavior?: any, authServerTrace?: HttpTrace[], clientOutput?: { stdout: string, stderr: string }) {
-  const passed = report.overall_result === 'PASS';
-  const icon = passed ? '✅' : '❌';
-
-  console.log(`  ${icon} ${report.test_suite}: ${report.overall_result}`);
-
-  // Only show failures in compact mode
-  if (!passed) {
-    report.tests.forEach(test => {
-      if (test.result === 'FAIL') {
-        console.log(`     ❌ ${test.name}`);
-        if (test.errors && test.errors.length > 0) {
-          test.errors.forEach(error => {
-            console.log(`        - ${error}`);
-          });
-        }
-      }
-    });
-  }
-
-  // Show HTTP trace and detailed behavior in verbose mode
-  if (behavior) {
-    displayTraces(behavior.httpTrace, authServerTrace || [])
-
-    // Show other behavior details
-    console.log('  Client Behavior Summary:');
-    const summaryBehavior = { ...behavior };
-    delete summaryBehavior.httpTrace; // Don't repeat the trace
-    console.log('  ' + JSON.stringify(summaryBehavior, null, 2).split('\n').join('\n  '));
-  }
-
-  // Show client output at the very end
-  // In verbose mode, output was shown directly via 'inherit', but we still captured it for non-verbose mode
-  if (clientOutput && (clientOutput.stdout || clientOutput.stderr)) {
-    if (clientOutput.stdout) {
-      console.log('\n  ====== CLIENT STDOUT ======');
-      console.log('  ' + clientOutput.stdout.split('\n').join('\n  '));
-      console.log('  ========================\n');
-    }
-
-    if (clientOutput.stderr) {
-      console.log('\n  ====== CLIENT STDERR ======');
-      console.log('  ' + clientOutput.stderr.split('\n').join('\n  '));
-      console.log('  ========================\n');
-    }
-  }
-}
-
-
 
 program.parse();
