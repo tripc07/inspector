@@ -96,23 +96,24 @@ export class ValidationServer {
       const chunks: Buffer[] = [];
 
       res.write = function (chunk) {
-        chunks.push(new Buffer(chunk));
-
-        oldWrite.apply(res, arguments);
+        chunks.push(Buffer.from(chunk));
+        return oldWrite.apply(res, arguments);
       };
 
       res.end = function (chunk) {
         if (chunk)
-          chunks.push(new Buffer(chunk));
+          chunks.push(Buffer.from(chunk));
 
         var body = Buffer.concat(chunks).toString('utf8');
-        // console.log(req.path, body);
-        if (!trace.response) {
-          trace.response = {};
-        }
-        trace.response.body = body;
 
-        oldEnd.apply(res, arguments);
+        // Capture response details
+        trace.response = {
+          status: res.statusCode,
+          headers: res.getHeaders(),
+          body: body
+        };
+
+        return oldEnd.apply(res, arguments);
       };
 
       this.clientBehavior.httpTrace.push(trace);
