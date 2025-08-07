@@ -1,0 +1,17 @@
+{
+  "name": "mcp-auth-compat",
+  "version": "1.0.0",
+  "description": "MCP Authorization Compliance Checker",
+  "type": "module",
+  "scripts": {
+    "test-client": "tsx test-client.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
