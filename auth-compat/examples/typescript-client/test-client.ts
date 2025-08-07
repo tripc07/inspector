@@ -41,7 +41,7 @@ async function main(): Promise<void> {
       capabilities: {}
     });
 
-    const transport = new StreamableHTTPClientTransport(
+    let transport = new StreamableHTTPClientTransport(
       new URL(serverUrl),
       {
         authProvider: oauthProvider
@@ -55,14 +55,25 @@ async function main(): Promise<void> {
     } catch (error) {
       if (error instanceof UnauthorizedError) {
         console.log('🔐 OAuth required - handling authorization...');
-        
+
         // The provider will automatically fetch the auth code
         const authCode = await oauthProvider.getAuthCode();
-        
+
         // Complete the auth flow
         await transport.finishAuth(authCode);
         
-        // Now reconnect with auth
+        // Close the old transport
+        await transport.close();
+        
+        // Create a new transport with the authenticated provider
+        transport = new StreamableHTTPClientTransport(
+          new URL(serverUrl),
+          {
+            authProvider: oauthProvider
+          }
+        );
+        
+        // Connect with the new transport
         await client.connect(transport);
         console.log('✅ Successfully connected with authentication');
       } else {
@@ -72,6 +83,7 @@ async function main(): Promise<void> {
 
     await client.listTools();
     console.log('✅ Successfully listed tools')
+
 
     await transport.close();
     console.log('✅ Connection closed successfully');

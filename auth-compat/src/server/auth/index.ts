@@ -45,16 +45,6 @@ export class MockAuthServer implements HttpTraceCollector {
     // Capture all HTTP requests and responses
     this.app.use(createHttpTraceMiddleware(this));
 
-    // Log all requests to auth server (optional - can be removed if not needed)
-    this.app.use((req, res, next) => {
-      console.log(`\n[AUTH SERVER] >>> HTTP ${req.method} ${req.url}`);
-      console.log('[AUTH SERVER] Headers:', JSON.stringify(req.headers, null, 2));
-      if (req.body && Object.keys(req.body).length > 0) {
-        console.log('[AUTH SERVER] Body:', JSON.stringify(req.body, null, 2));
-      }
-      next();
-    });
-
     // OAuth2 authorization endpoint
     this.app.get('/authorize', (req: Request, res: Response) => {
       const {

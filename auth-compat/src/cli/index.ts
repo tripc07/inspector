@@ -76,12 +76,30 @@ async function runSingleTest(
     const executable = commandParts[0];
     const args = [...commandParts.slice(1), serverUrl];
 
+    // Capture client output when not in verbose mode (verbose mode uses 'inherit')
+    let clientStdout = '';
+    let clientStderr = '';
+
     // Run the client
     const clientProcess = spawn(executable, args, {
       stdio: verbose ? 'inherit' : 'pipe',
       shell: true,
       timeout
     });
+
+    // Capture stdout/stderr when not in verbose mode
+    if (!verbose) {
+      if (clientProcess.stdout) {
+        clientProcess.stdout.on('data', (data) => {
+          clientStdout += data.toString();
+        });
+      }
+      if (clientProcess.stderr) {
+        clientProcess.stderr.on('data', (data) => {
+          clientStderr += data.toString();
+        });
+      }
+    }
 
     // Wait for client to finish
     const clientExitCode = await new Promise<number>((resolve, reject) => {
@@ -128,7 +146,8 @@ async function runSingleTest(
     if (options.json) {
       console.log(JSON.stringify(report, null, 2));
     } else {
-      printCompactReport(report, verbose ? behavior : null, verbose ? authServerTrace : null);
+      const clientOutput = { stdout: clientStdout, stderr: clientStderr };
+      printCompactReport(report, verbose ? behavior : null, verbose ? authServerTrace : null, clientOutput);
     }
 
     // Stop server
@@ -198,7 +217,7 @@ function printHttpTrace(traces: any[], label: string) {
   console.log('  ========================\n');
 }
 
-function printCompactReport(report: ComplianceReport, behavior?: any, authServerTrace?: any[]) {
+function printCompactReport(report: ComplianceReport, behavior?: any, authServerTrace?: any[], clientOutput?: { stdout: string, stderr: string }) {
   const passed = report.overall_result === 'PASS';
   const icon = passed ? '✅' : '❌';
 
@@ -293,7 +312,6 @@ function printCompactReport(report: ComplianceReport, behavior?: any, authServer
         console.log('');
       });
       console.log('  ========================\n');
-
     }
 
     // Show other behavior details
@@ -301,6 +319,22 @@ function printCompactReport(report: ComplianceReport, behavior?: any, authServer
     const summaryBehavior = { ...behavior };
     delete summaryBehavior.httpTrace; // Don't repeat the trace
     console.log('  ' + JSON.stringify(summaryBehavior, null, 2).split('\n').join('\n  '));
+  }
+
+  // Show client output at the very end
+  // In verbose mode, output was shown directly via 'inherit', but we still captured it for non-verbose mode
+  if (clientOutput && (clientOutput.stdout || clientOutput.stderr)) {
+    if (clientOutput.stdout) {
+      console.log('\n  ====== CLIENT STDOUT ======');
+      console.log('  ' + clientOutput.stdout.split('\n').join('\n  '));
+      console.log('  ========================\n');
+    }
+    
+    if (clientOutput.stderr) {
+      console.log('\n  ====== CLIENT STDERR ======');
+      console.log('  ' + clientOutput.stderr.split('\n').join('\n  '));
+      console.log('  ========================\n');
+    }
   }
 }
 
