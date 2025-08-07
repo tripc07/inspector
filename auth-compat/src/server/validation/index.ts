@@ -8,8 +8,6 @@ import { z } from 'zod';
 export class ValidationServer {
   private app: express.Application;
   private server: Server | null = null;
-  private mcpServer: McpServer;
-  private transport: StreamableHTTPServerTransport | null = null;
   private clientBehavior: ClientBehavior;
   private config: ValidationServerConfig;
 
@@ -34,8 +32,12 @@ export class ValidationServer {
       errors: []
     };
 
-    // Create MCP server
-    this.mcpServer = new McpServer({
+    this.setupRoutes();
+  }
+
+  private createMCPServer(): McpServer {
+    // Create a new MCP server instance for each request
+    const mcpServer = new McpServer({
       name: 'validation-server',
       version: '1.0.0'
     }, {
@@ -44,13 +46,8 @@ export class ValidationServer {
       }
     });
 
-    this.setupMCPHandlers();
-    this.setupRoutes();
-  }
-
-  private setupMCPHandlers(): void {
     // Register a test tool
-    this.mcpServer.registerTool(
+    mcpServer.registerTool(
       'test-tool',
       {
         title: 'Test Tool',
@@ -60,7 +57,6 @@ export class ValidationServer {
         }
       },
       async ({ message }) => {
-        this.clientBehavior.requestsMade.push('tools/call:test-tool');
         return {
           content: [{
             type: 'text',
@@ -70,7 +66,7 @@ export class ValidationServer {
       }
     );
 
-    // We'll track tool listing through the transport message handler instead
+    return mcpServer;
   }
 
   private setupRoutes(): void {
@@ -96,18 +92,7 @@ export class ValidationServer {
       });
     }
 
-    // Create transport once at startup
-    this.transport = new StreamableHTTPServerTransport(
-      this.config.authRequired ? {
-        requireAuth: true,
-        authMetadataUrl: `http://localhost:${this.config.port || 3000}${this.config.metadataLocation}`
-      } : {}
-    );
-
-    // Connect MCP server to transport
-    this.mcpServer.connect(this.transport).catch(console.error);
-
-    // MCP endpoint
+    // MCP POST endpoint - stateless mode
     this.app.post('/mcp', async (req: Request, res: Response) => {
       // Track the incoming message
       if (req.body) {
@@ -121,18 +106,68 @@ export class ValidationServer {
         } else if (message.method === 'tools/list') {
           this.clientBehavior.requestsMade.push('tools/list');
         } else if (message.method === 'tools/call') {
-          this.clientBehavior.requestsMade.push(`tools/call:${message.params?.name}`);
+          const toolName = message.params?.name;
+          this.clientBehavior.requestsMade.push(`tools/call:${toolName}`);
+        } else if (message.method) {
+          this.clientBehavior.requestsMade.push(message.method);
         }
       }
 
-      // Handle the request through transport
+      // In stateless mode, create a new instance of transport and server for each request
+      // to ensure complete isolation
       try {
-        await this.transport!.handleRequest(req, res);
+        const mcpServer = this.createMCPServer();
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: undefined, // No sessions in stateless mode
+        });
+        
+        await mcpServer.connect(transport);
+        await transport.handleRequest(req, res, req.body);
+        
+        res.on('close', () => {
+          transport.close();
+          mcpServer.close();
+        });
       } catch (error) {
         this.clientBehavior.errors.push(`Request error: ${error}`);
-        console.error('Transport error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('Error handling MCP request:', error);
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: {
+              code: -32603,
+              message: 'Internal server error',
+            },
+            id: null,
+          });
+        }
       }
+    });
+
+    // MCP GET endpoint - not supported in stateless mode
+    this.app.get('/mcp', async (req: Request, res: Response) => {
+      console.log('Received GET MCP request (not supported in stateless mode)');
+      res.writeHead(405).end(JSON.stringify({
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: "Method not allowed in stateless mode"
+        },
+        id: null
+      }));
+    });
+
+    // MCP DELETE endpoint - not supported in stateless mode
+    this.app.delete('/mcp', async (req: Request, res: Response) => {
+      console.log('Received DELETE MCP request (not supported in stateless mode)');
+      res.writeHead(405).end(JSON.stringify({
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: "Method not allowed in stateless mode"
+        },
+        id: null
+      }));
     });
 
     // Endpoint to retrieve client behavior for reporting
@@ -145,16 +180,13 @@ export class ValidationServer {
     return new Promise((resolve) => {
       this.server = this.app.listen(this.config.port, () => {
         const port = this.getPort();
-        console.log(`Validation server started on port ${port}`);
+        console.log(`Validation server started on port ${port} (stateless mode)`);
         resolve(port);
       });
     });
   }
 
   async stop(): Promise<void> {
-    if (this.transport) {
-      await this.transport.close();
-    }
     return new Promise((resolve) => {
       if (this.server) {
         this.server.close(() => {
