@@ -30,6 +30,7 @@ export class MockAuthServer implements HttpTraceCollector {
   private port: number;
   public httpTrace: HttpTrace[] = [];
   private verbose: boolean;
+  public issuerPath: string;
 
   // Store authorization requests for PKCE validation
   private authorizationRequests: Map<string, AuthorizationRequest> = new Map();
@@ -40,7 +41,34 @@ export class MockAuthServer implements HttpTraceCollector {
     this.app = express();
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
+    
+    // Extract issuer path from metadata location
+    // For /.well-known/oauth-authorization-server/tenant1 -> /tenant1
+    // For /.well-known/openid-configuration -> ''
+    // For /tenant1/.well-known/openid-configuration -> /tenant1
+    this.issuerPath = this.extractIssuerPath(metadataLocation);
+    
     this.setupRoutes();
+  }
+  
+  private extractIssuerPath(metadataLocation: string): string {
+    // Handle different metadata location patterns
+    if (metadataLocation.includes('/.well-known/oauth-authorization-server/')) {
+      // OAuth 2.0 with path: /.well-known/oauth-authorization-server/tenant1 -> /tenant1
+      return metadataLocation.replace('/.well-known/oauth-authorization-server', '');
+    } else if (metadataLocation.includes('/.well-known/openid-configuration/')) {
+      // OpenID with path: /.well-known/openid-configuration/tenant1 -> /tenant1
+      return metadataLocation.replace('/.well-known/openid-configuration', '');
+    } else if (metadataLocation.endsWith('/.well-known/openid-configuration')) {
+      // Check if there's a path before /.well-known
+      const match = metadataLocation.match(/^(\/[^\/]+)\/.well-known\/openid-configuration$/);
+      if (match) {
+        // /tenant1/.well-known/openid-configuration -> /tenant1
+        return match[1];
+      }
+    }
+    // Standard locations without path component
+    return '';
   }
 
   private log(...args: any[]): void {
@@ -55,12 +83,13 @@ export class MockAuthServer implements HttpTraceCollector {
 
     // OAuth Authorization Server Metadata endpoint
     this.app.get(this.metadataLocation, (req: Request, res: Response) => {
-      const serverUrl = this.getUrl();
+      const baseUrl = this.getUrl();
+      const issuer = baseUrl + this.issuerPath;
       res.json({
-        issuer: serverUrl,
-        authorization_endpoint: `${serverUrl}/authorize`,
-        token_endpoint: `${serverUrl}/token`,
-        registration_endpoint: `${serverUrl}/register`,
+        issuer: issuer,
+        authorization_endpoint: `${baseUrl}/authorize`,
+        token_endpoint: `${baseUrl}/token`,
+        registration_endpoint: `${baseUrl}/register`,
         response_types_supported: ['code'],
         grant_types_supported: ['authorization_code', 'refresh_token'],
         code_challenge_methods_supported: ['S256'],

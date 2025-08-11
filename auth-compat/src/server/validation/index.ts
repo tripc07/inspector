@@ -105,11 +105,15 @@ export class ValidationServer {
         // Get the actual port at request time
         const serverPort = this.getPort();
         const authServerUrl = this.authServer ? this.authServer.getUrl() : '';
+        
+        // Add issuer path if needed
+        const issuerPath = this.authServer ? this.authServer.issuerPath : '';
+        const fullAuthServerUrl = authServerUrl + issuerPath;
 
         // Serve OAuth Protected Resource Metadata (RFC 9728)
         res.json({
           resource: `http://localhost:${serverPort}`,
-          authorization_servers: authServerUrl ? [authServerUrl] : []
+          authorization_servers: fullAuthServerUrl ? [fullAuthServerUrl] : []
         });
       });
     }
