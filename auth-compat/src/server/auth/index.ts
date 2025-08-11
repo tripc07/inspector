@@ -85,7 +85,9 @@ export class MockAuthServer implements HttpTraceCollector {
     this.app.get(this.metadataLocation, (req: Request, res: Response) => {
       const baseUrl = this.getUrl();
       const issuer = baseUrl + this.issuerPath;
-      res.json({
+      
+      // Base metadata for both OAuth 2.0 and OIDC
+      const metadata: any = {
         issuer: issuer,
         authorization_endpoint: `${baseUrl}/authorize`,
         token_endpoint: `${baseUrl}/token`,
@@ -94,7 +96,19 @@ export class MockAuthServer implements HttpTraceCollector {
         grant_types_supported: ['authorization_code', 'refresh_token'],
         code_challenge_methods_supported: ['S256'],
         token_endpoint_auth_methods_supported: ['none', 'client_secret_post']
-      });
+      };
+      
+      // Add OIDC-specific fields if this is an OpenID Connect metadata endpoint
+      if (this.metadataLocation.includes('openid-configuration')) {
+        metadata.jwks_uri = `${baseUrl}/jwks`;
+        metadata.subject_types_supported = ['public'];
+        metadata.id_token_signing_alg_values_supported = ['RS256'];
+        metadata.userinfo_endpoint = `${baseUrl}/userinfo`;
+        metadata.scopes_supported = ['openid', 'profile', 'email'];
+        metadata.claims_supported = ['sub', 'name', 'email', 'email_verified'];
+      }
+      
+      res.json(metadata);
     });
 
     // OAuth2 authorization endpoint
