@@ -35,7 +35,6 @@ export interface ClientBehavior {
   clientInfo?: Record<string, any>;
   requestsMade: string[];
   authMetadataRequested: boolean;
-  authFlowCompleted: boolean;
   errors: string[];
   httpTrace: HttpTrace[];
 }

@@ -41,7 +41,6 @@ export class ValidationServer {
       initialized: false,
       requestsMade: [],
       authMetadataRequested: false,
-      authFlowCompleted: false,
       errors: [],
       httpTrace: []
     };
@@ -122,7 +121,7 @@ export class ValidationServer {
       // We'll set the full URL dynamically in the middleware
       bearerMiddleware = async (req: Request, res: Response, next: any) => {
         const serverPort = this.getPort();
-        const resourceMetadataUrl = this.config.includeWwwAuthenticate 
+        const resourceMetadataUrl = this.config.includeWwwAuthenticate
           ? `http://localhost:${serverPort}${this.config.metadataLocation}`
           : undefined;
         const middleware = requireBearerAuth({

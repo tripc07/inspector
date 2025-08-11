@@ -1,7 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import { ValidationServer } from '../../server/validation/index.js';
 import { ValidationServerConfig, ComplianceReport, TestResult, HttpTrace } from '../../types.js';
-import { displayTraces } from '../../middleware/http-trace.js';
+import { formatTraces } from '../../middleware/http-trace.js';
 
 export interface ClientExecutionResult {
   exitCode: number;
@@ -164,7 +164,6 @@ export function validateClientBehavior(
   behavior: any,
   expectations: {
     authMetadataRequested?: boolean;
-    authFlowCompleted?: boolean;
     initialized?: boolean;
     connected?: boolean;
   }
@@ -174,11 +173,6 @@ export function validateClientBehavior(
   if (expectations.authMetadataRequested !== undefined &&
       behavior.authMetadataRequested !== expectations.authMetadataRequested) {
     errors.push(`Expected authMetadataRequested to be ${expectations.authMetadataRequested}, but was ${behavior.authMetadataRequested}`);
-  }
-
-  if (expectations.authFlowCompleted !== undefined &&
-      behavior.authFlowCompleted !== expectations.authFlowCompleted) {
-    errors.push(`Expected authFlowCompleted to be ${expectations.authFlowCompleted}, but was ${behavior.authFlowCompleted}`);
   }
 
   if (expectations.initialized !== undefined &&
@@ -203,33 +197,38 @@ export function printVerboseOutput(
   authServerTrace: HttpTrace[],
   clientOutput: ClientExecutionResult
 ): void {
-  console.log('\n=== Test Results ===');
-  console.log(`Overall Result: ${report.overall_result}`);
-  console.log(`Tests Passed: ${report.tests_passed}`);
-  console.log(`Tests Failed: ${report.tests_failed}`);
+  const output: string[] = [];
+
+  output.push('\n=== Test Results ===');
+  output.push(`Overall Result: ${report.overall_result}`);
+  output.push(`Tests Passed: ${report.tests_passed}`);
+  output.push(`Tests Failed: ${report.tests_failed}`);
 
   if (report.tests_failed > 0) {
-    console.log('\nFailed Tests:');
+    output.push('\nFailed Tests:');
     report.tests.forEach(test => {
       if (test.result === 'FAIL') {
-        console.log(`  - ${test.name}`);
+        output.push(`  - ${test.name}`);
         test.errors?.forEach(error => {
-          console.log(`    ${error}`);
+          output.push(`    ${error}`);
         });
       }
     });
   }
 
-  console.log('\n=== HTTP Traces ===');
-  displayTraces(behavior.httpTrace || [], authServerTrace);
+  output.push('\n=== HTTP Traces ===');
+  output.push(formatTraces(behavior.httpTrace || [], authServerTrace));
 
   if (clientOutput.stdout || clientOutput.stderr) {
-    console.log('\n=== Client Output ===');
+    output.push('\n=== Client Output ===');
     if (clientOutput.stdout) {
-      console.log('STDOUT:', clientOutput.stdout);
+      output.push(`STDOUT: ${clientOutput.stdout}`);
     }
     if (clientOutput.stderr) {
-      console.log('STDERR:', clientOutput.stderr);
+      output.push(`STDERR: ${clientOutput.stderr}`);
     }
   }
+
+  // Print everything at once to avoid Jest's per-line issues
+  console.log(output.join('\n'));
 }

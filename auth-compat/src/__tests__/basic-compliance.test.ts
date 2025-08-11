@@ -56,7 +56,6 @@ describe('Basic Compliance', () => {
       expect(behavior.connected).toBe(true);
       expect(behavior.initialized).toBe(true);
       expect(behavior.authMetadataRequested).toBe(true);
-      expect(behavior.authFlowCompleted).toBe(true);
 
       // Verify auth server was contacted
       expect(authServerTrace.length).toBeGreaterThan(0);

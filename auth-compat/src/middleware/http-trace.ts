@@ -52,9 +52,10 @@ export function createHttpTraceMiddleware(collector: HttpTraceCollector) {
   };
 }
 
-export function displayTraces(serverTrace: HttpTrace[], authServerTrace: HttpTrace[]) {
+export function formatTraces(serverTrace: HttpTrace[], authServerTrace: HttpTrace[]): string {
   // Collect all traces and interleave them by timestamp
   const allTraces: any[] = [];
+  const output: string[] = [];
 
   serverTrace.forEach((trace: any) => {
     allTraces.push({ ...trace, source: 'MCP SERVER' });
@@ -68,59 +69,66 @@ export function displayTraces(serverTrace: HttpTrace[], authServerTrace: HttpTra
   if (allTraces.length > 0) {
     allTraces.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-    // Print interleaved traces
-    console.log('\n  ====== INTERLEAVED HTTP TRACE ======');
+    // Build trace output
+    output.push('\n  ====== INTERLEAVED HTTP TRACE ======');
     allTraces.forEach((trace: any, index: number) => {
-      console.log(`\n  --- [${trace.source}] Request #${index + 1} ---`);
-      console.log(`  Timestamp: ${trace.timestamp}`);
+      output.push(`\n  --- [${trace.source}] Request #${index + 1} ---`);
+      output.push(`  Timestamp: ${trace.timestamp}`);
 
       // Request line
-      console.log(`  ${trace.method} ${trace.url} HTTP/1.1`);
+      output.push(`  ${trace.method} ${trace.url} HTTP/1.1`);
 
       // Request headers
       if (trace.headers) {
         Object.entries(trace.headers).forEach(([key, value]) => {
-          console.log(`  ${key}: ${value}`);
+          output.push(`  ${key}: ${value}`);
         });
       }
 
       // Request body
       if (trace.body) {
-        console.log('');
+        output.push('');
         const bodyStr = typeof trace.body === 'string' ? trace.body : JSON.stringify(trace.body);
-        console.log(`  ${bodyStr}`);
+        output.push(`  ${bodyStr}`);
       }
 
       // Response
       if (trace.response) {
-        console.log(`\n  HTTP/1.1 ${trace.response.status} ${getStatusText(trace.response.status)}`);
+        output.push(`\n  HTTP/1.1 ${trace.response.status} ${getStatusText(trace.response.status)}`);
 
         // Response headers
         if (trace.response.headers) {
           Object.entries(trace.response.headers).forEach(([key, value]) => {
-            console.log(`  ${key}: ${value}`);
+            output.push(`  ${key}: ${value}`);
           });
         }
 
         // Response body
         if (trace.response.body) {
-          console.log('');
+          output.push('');
           const bodyStr = typeof trace.response.body === 'string'
             ? trace.response.body
             : JSON.stringify(trace.response.body);
 
           // Truncate very long responses
           if (bodyStr.length > 1000) {
-            console.log(`  ${bodyStr.substring(0, 1000)}... [truncated]`);
+            output.push(`  ${bodyStr.substring(0, 1000)}... [truncated]`);
           } else {
-            console.log(`  ${bodyStr}`);
+            output.push(`  ${bodyStr}`);
           }
         }
       }
-      console.log('');
+      output.push('');
     });
-    console.log('  ========================\n');
+    output.push('  ========================\n');
   }
+  
+  return output.join('\n');
+}
+
+// Keep the old function for backward compatibility but have it use the new one
+export function displayTraces(serverTrace: HttpTrace[], authServerTrace: HttpTrace[]) {
+  console.log(formatTraces(serverTrace, authServerTrace));
 }
 
 
