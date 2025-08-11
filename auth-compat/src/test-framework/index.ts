@@ -87,6 +87,7 @@ export class ComplianceTestRunner {
         }, timeout);
 
         clientProcess.on('exit', (code) => {
+          console.log(`EXIT CODE: ${code}`);
           clearTimeout(timeoutHandle);
           if (!timedOut) {
             resolve(code || 0);
@@ -113,6 +114,8 @@ export class ComplianceTestRunner {
       }
 
       // Generate report
+      console.log(`EXIT CODE: ${clientExitCode}`);
+
       const report: ComplianceReport = {
         overall_result: results.every(r => r.result === 'PASS') &&
                        clientExitCode === 0 &&
@@ -186,7 +189,6 @@ export class ComplianceTestRunner {
     this.log('\n' + '='.repeat(60));
     this.log(`Suite Summary: ${suite.name}`);
     this.log(`  Passed: ${passed}/${results.length}`);
-    this.log(`  Failed: ${failed}/${results.length}`);
 
     return failed === 0;
   }
@@ -206,7 +208,6 @@ export class ComplianceTestRunner {
     this.log('OVERALL SUMMARY');
     this.log('='.repeat(60));
     this.log(`Total Suites Passed: ${totalSuitesPassed}/${allResults.length}`);
-    this.log(`Total Suites Failed: ${totalSuitesFailed}/${allResults.length}`);
 
     if (totalSuitesFailed === 0) {
       this.log('\n✅ All test suites passed!');
