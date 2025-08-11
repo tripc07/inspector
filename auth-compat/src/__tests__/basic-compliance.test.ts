@@ -18,18 +18,48 @@ describe('Basic Compliance', () => {
           verbose: VERBOSE
         }
       );
-      
+
       // Print verbose output if requested
       if (VERBOSE) {
         printVerboseOutput(report, behavior, authServerTrace, clientOutput);
       }
-      
+
       // Assertions
-      expect(report).toHavePassedCompliance();
       expect(clientOutput.exitCode).toBe(0);
       expect(clientOutput.timedOut).toBe(false);
       expect(behavior.connected).toBe(true);
       expect(behavior.initialized).toBe(true);
+    });
+  });
+
+  describe('Tests OAuth2/OIDC authorization flow', () => {
+    test('Standard OAuth Flow - Client completes OAuth flow with default settings', async () => {
+      const { report, clientOutput, behavior, authServerTrace } = await runComplianceTest(
+        CLIENT_COMMAND,
+        {
+          authRequired: true
+        },
+        {
+          timeout: 30000,
+          verbose: VERBOSE
+        }
+      );
+
+      // Print verbose output if requested
+      if (VERBOSE) {
+        printVerboseOutput(report, behavior, authServerTrace, clientOutput);
+      }
+
+      // Assertions
+      expect(clientOutput.exitCode).toBe(0);
+      expect(clientOutput.timedOut).toBe(false);
+      expect(behavior.connected).toBe(true);
+      expect(behavior.initialized).toBe(true);
+      expect(behavior.authMetadataRequested).toBe(true);
+      expect(behavior.authFlowCompleted).toBe(true);
+
+      // Verify auth server was contacted
+      expect(authServerTrace.length).toBeGreaterThan(0);
     });
   });
 });

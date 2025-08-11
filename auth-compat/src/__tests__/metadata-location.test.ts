@@ -8,11 +8,11 @@ const VERBOSE = process.env.VERBOSE === 'true';
 describe('Metadata Location Tests', () => {
   describe('Tests different OAuth protected resource metadata locations', () => {
 
-    const testCases = [
+    const testCases: Array<[string, string, boolean]> = [
       ['Non-standard location with WWW-Authenticate', '/custom/oauth/metadata', true],
       ['Standard location without WWW-Authenticate', '/.well-known/oauth-protected-resource', false],
       ['Nested well-known path with WWW-Authenticate', '/.well-known/oauth-protected-resource/mcp', false],
-    ] as const;
+    ];
 
     test.each(testCases)(
       '%s',

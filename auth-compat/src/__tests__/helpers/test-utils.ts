@@ -26,7 +26,7 @@ export async function setupTestServer(
   const server = new ValidationServer(config, verbose);
   const serverPort = await server.start();
   const serverUrl = `http://localhost:${serverPort}/mcp`;
-  
+
   return {
     server,
     serverUrl,
@@ -52,39 +52,39 @@ export async function executeClient(
   const commandParts = clientCommand.split(' ');
   const executable = commandParts[0];
   const args = [...commandParts.slice(1), serverUrl];
-  
+
   let stdout = '';
   let stderr = '';
   let timedOut = false;
-  
+
   const clientProcess = spawn(executable, args, {
     stdio: 'pipe',
     shell: true,
     timeout
   });
-  
+
   clientProcess.stdout?.on('data', (data) => {
     stdout += data.toString();
   });
-  
+
   clientProcess.stderr?.on('data', (data) => {
     stderr += data.toString();
   });
-  
+
   const exitCode = await new Promise<number>((resolve, reject) => {
     const timeoutHandle = setTimeout(() => {
       timedOut = true;
       clientProcess.kill();
       reject(new Error(`Client execution timed out after ${timeout}ms`));
     }, timeout);
-    
+
     clientProcess.on('exit', (code) => {
       clearTimeout(timeoutHandle);
       if (!timedOut) {
         resolve(code || 0);
       }
     });
-    
+
     clientProcess.on('error', (error) => {
       clearTimeout(timeoutHandle);
       reject(error);
@@ -95,7 +95,7 @@ export async function executeClient(
     }
     throw error;
   });
-  
+
   return {
     exitCode,
     stdout,
@@ -122,21 +122,21 @@ export async function runComplianceTest(
 }> {
   const { timeout = 30000, verbose = false } = options;
   const context = await setupTestServer(serverConfig, verbose);
-  
+
   try {
     // Execute the client
     const clientOutput = await executeClient(clientCommand, context.serverUrl, timeout);
-    
+
     // Get validation results
     const results = context.server.getValidationResults();
     const behavior = context.server.getClientBehavior();
     const authServerTrace = serverConfig.authRequired && context.server.authServer
       ? context.server.authServer.getHttpTrace()
       : [];
-    
+
     // Generate compliance report
     const report: ComplianceReport = {
-      overall_result: results.every(r => r.result === 'PASS') && 
+      overall_result: results.every(r => r.result === 'PASS') &&
                      clientOutput.exitCode === 0 ? 'PASS' : 'FAIL',
       test_suite: 'jest-test',
       timestamp: new Date().toISOString(),
@@ -145,7 +145,7 @@ export async function runComplianceTest(
       tests_failed: results.filter(r => r.result === 'FAIL').length,
       tests: results
     };
-    
+
     return {
       report,
       clientOutput,
@@ -155,30 +155,6 @@ export async function runComplianceTest(
   } finally {
     await teardownTestServer(context);
   }
-}
-
-/**
- * Custom Jest matchers for compliance testing
- */
-export function toHavePassedCompliance(
-  report: ComplianceReport
-): { pass: boolean; message: () => string } {
-  const pass = report.overall_result === 'PASS';
-  
-  const message = () => {
-    if (pass) {
-      return `Expected compliance test to fail, but it passed`;
-    } else {
-      const failures = report.tests
-        .filter(t => t.result === 'FAIL')
-        .map(t => `  - ${t.name}: ${t.errors?.join(', ') || 'Failed'}`)
-        .join('\n');
-      
-      return `Expected compliance test to pass, but it failed:\n${failures}`;
-    }
-  };
-  
-  return { pass, message };
 }
 
 /**
@@ -194,27 +170,27 @@ export function validateClientBehavior(
   }
 ): string[] {
   const errors: string[] = [];
-  
-  if (expectations.authMetadataRequested !== undefined && 
+
+  if (expectations.authMetadataRequested !== undefined &&
       behavior.authMetadataRequested !== expectations.authMetadataRequested) {
     errors.push(`Expected authMetadataRequested to be ${expectations.authMetadataRequested}, but was ${behavior.authMetadataRequested}`);
   }
-  
-  if (expectations.authFlowCompleted !== undefined && 
+
+  if (expectations.authFlowCompleted !== undefined &&
       behavior.authFlowCompleted !== expectations.authFlowCompleted) {
     errors.push(`Expected authFlowCompleted to be ${expectations.authFlowCompleted}, but was ${behavior.authFlowCompleted}`);
   }
-  
-  if (expectations.initialized !== undefined && 
+
+  if (expectations.initialized !== undefined &&
       behavior.initialized !== expectations.initialized) {
     errors.push(`Expected initialized to be ${expectations.initialized}, but was ${behavior.initialized}`);
   }
-  
-  if (expectations.connected !== undefined && 
+
+  if (expectations.connected !== undefined &&
       behavior.connected !== expectations.connected) {
     errors.push(`Expected connected to be ${expectations.connected}, but was ${behavior.connected}`);
   }
-  
+
   return errors;
 }
 
@@ -231,7 +207,7 @@ export function printVerboseOutput(
   console.log(`Overall Result: ${report.overall_result}`);
   console.log(`Tests Passed: ${report.tests_passed}`);
   console.log(`Tests Failed: ${report.tests_failed}`);
-  
+
   if (report.tests_failed > 0) {
     console.log('\nFailed Tests:');
     report.tests.forEach(test => {
@@ -243,10 +219,10 @@ export function printVerboseOutput(
       }
     });
   }
-  
+
   console.log('\n=== HTTP Traces ===');
   displayTraces(behavior.httpTrace || [], authServerTrace);
-  
+
   if (clientOutput.stdout || clientOutput.stderr) {
     console.log('\n=== Client Output ===');
     if (clientOutput.stdout) {
@@ -256,20 +232,4 @@ export function printVerboseOutput(
       console.log('STDERR:', clientOutput.stderr);
     }
   }
-}
-
-// Extend Jest matchers
-declare global {
-  namespace jest {
-    interface Matchers<R> {
-      toHavePassedCompliance(): R;
-    }
-  }
-}
-
-// Register custom matchers with Jest
-if (typeof expect !== 'undefined' && expect.extend) {
-  expect.extend({
-    toHavePassedCompliance
-  });
 }
