@@ -34,7 +34,7 @@ describe('Basic Compliance', () => {
 
   describe('Tests OAuth2/OIDC authorization flow', () => {
     test('Standard OAuth Flow - Client completes OAuth flow with default settings', async () => {
-      const { report, clientOutput, behavior, authServerTrace } = await runComplianceTest(
+      const { report, clientOutput, behavior, authServerTrace, serverPort } = await runComplianceTest(
         CLIENT_COMMAND,
         {
           authRequired: true
@@ -59,6 +59,12 @@ describe('Basic Compliance', () => {
 
       // Verify auth server was contacted
       expect(authServerTrace.length).toBeGreaterThan(0);
+
+      // Verify resource parameter matches PRM exactly
+      // The PRM always returns http://localhost:{port} as the resource
+      const expectedResource = `http://localhost:${serverPort}/`;
+      expect(behavior.resourceParameterUsed).toBe(true);
+      expect(behavior.resourceParameterValue).toBe(expectedResource);
     });
   });
 });

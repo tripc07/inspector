@@ -302,6 +302,27 @@ export class ValidationServer {
         },
         errors: this.clientBehavior.authMetadataRequested ? undefined : ['Client did not request auth metadata']
       });
+      
+      // Test: Resource parameter (RFC 8707)
+      const serverPort = this.getPort();
+      const expectedResource = `http://localhost:${serverPort}`;
+      const resourceCorrect = this.authServer?.resourceParameterValue === expectedResource;
+      
+      results.push({
+        name: 'resource_parameter_rfc8707',
+        result: (this.authServer?.resourceParameterReceived && resourceCorrect) ? 'PASS' : 'FAIL',
+        details: {
+          resource_parameter_sent: this.authServer?.resourceParameterReceived || false,
+          resource_parameter_value: this.authServer?.resourceParameterValue || null,
+          expected_resource: expectedResource,
+          matches_prm: resourceCorrect
+        },
+        errors: !this.authServer?.resourceParameterReceived 
+          ? ['Client did not send resource parameter (required by RFC 8707)']
+          : !resourceCorrect 
+          ? [`Resource parameter '${this.authServer?.resourceParameterValue}' does not match PRM value '${expectedResource}'`]
+          : undefined
+      });
     }
 
     // Test: Basic functionality
@@ -319,6 +340,22 @@ export class ValidationServer {
   }
 
   getClientBehavior(): ClientBehavior {
+    // Add auth server tracking if available
+    if (this.authServer) {
+      this.clientBehavior.resourceParameterUsed = this.authServer.resourceParameterReceived;
+      this.clientBehavior.resourceParameterValue = this.authServer.resourceParameterValue || undefined;
+      
+      // Check if the resource parameter EXACTLY matches what's in the PRM
+      const serverPort = this.getPort();
+      const expectedResource = `http://localhost:${serverPort}`; // This is what we return in PRM
+      if (this.authServer.resourceParameterValue) {
+        const receivedResource = this.authServer.resourceParameterValue;
+        if (receivedResource !== expectedResource) {
+          this.clientBehavior.errors.push(`Incorrect resource parameter: expected exactly '${expectedResource}' (from PRM), got '${receivedResource}'`);
+        }
+      }
+    }
+    
     return this.clientBehavior;
   }
 }

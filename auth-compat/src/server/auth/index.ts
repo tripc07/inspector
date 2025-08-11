@@ -31,6 +31,8 @@ export class MockAuthServer implements HttpTraceCollector {
   public httpTrace: HttpTrace[] = [];
   private verbose: boolean;
   public issuerPath: string;
+  public resourceParameterReceived: boolean = false;
+  public resourceParameterValue: string | null = null;
 
   // Store authorization requests for PKCE validation
   private authorizationRequests: Map<string, AuthorizationRequest> = new Map();
@@ -120,7 +122,15 @@ export class MockAuthServer implements HttpTraceCollector {
         state,
         code_challenge,
         code_challenge_method,
+        resource,
       } = req.query as any;
+
+      // Track resource parameter
+      if (resource) {
+        this.resourceParameterReceived = true;
+        this.resourceParameterValue = resource;
+        this.log('Received resource parameter:', resource);
+      }
 
       // Basic validation
       if (response_type !== 'code') {
@@ -165,8 +175,19 @@ export class MockAuthServer implements HttpTraceCollector {
         code_verifier,
         client_id,
         client_secret,
-        refresh_token
+        refresh_token,
+        resource
       } = req.body;
+      
+      // Track resource parameter in token request
+      if (resource) {
+        this.resourceParameterReceived = true;
+        // Update value if not already set or if different
+        if (!this.resourceParameterValue) {
+          this.resourceParameterValue = resource;
+        }
+        this.log('Received resource parameter in token request:', resource);
+      }
 
       if (grant_type === 'authorization_code') {
         // Validate authorization code

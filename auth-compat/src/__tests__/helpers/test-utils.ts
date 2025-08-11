@@ -119,6 +119,7 @@ export async function runComplianceTest(
   clientOutput: ClientExecutionResult;
   behavior: any;
   authServerTrace: HttpTrace[];
+  serverPort: number;
 }> {
   const { timeout = 30000, verbose = false } = options;
   const context = await setupTestServer(serverConfig, verbose);
@@ -150,7 +151,8 @@ export async function runComplianceTest(
       report,
       clientOutput,
       behavior,
-      authServerTrace
+      authServerTrace,
+      serverPort: context.serverPort
     };
   } finally {
     await teardownTestServer(context);
