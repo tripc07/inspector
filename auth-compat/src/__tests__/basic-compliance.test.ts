@@ -63,8 +63,8 @@ describe('Basic Compliance', () => {
       // Verify resource parameter matches PRM exactly
       // The PRM always returns http://localhost:{port} as the resource
       const expectedResource = `http://localhost:${serverPort}/`;
-      expect(behavior.resourceParameterUsed).toBe(true);
-      expect(behavior.resourceParameterValue).toBe(expectedResource);
+      expect(behavior.authResourceParameter).toBe(expectedResource);
+      expect(behavior.tokenResourceParameter).toBe(expectedResource);
     });
   });
 });

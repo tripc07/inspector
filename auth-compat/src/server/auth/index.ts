@@ -31,8 +31,9 @@ export class MockAuthServer implements HttpTraceCollector {
   public httpTrace: HttpTrace[] = [];
   private verbose: boolean;
   public issuerPath: string;
-  public resourceParameterReceived: boolean = false;
-  public resourceParameterValue: string | null = null;
+  public authResourceParameter: string | null = null;
+  public tokenResourceParameter: string | null = null;
+
 
   // Store authorization requests for PKCE validation
   private authorizationRequests: Map<string, AuthorizationRequest> = new Map();
@@ -43,16 +44,16 @@ export class MockAuthServer implements HttpTraceCollector {
     this.app = express();
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
-    
+
     // Extract issuer path from metadata location
     // For /.well-known/oauth-authorization-server/tenant1 -> /tenant1
     // For /.well-known/openid-configuration -> ''
     // For /tenant1/.well-known/openid-configuration -> /tenant1
     this.issuerPath = this.extractIssuerPath(metadataLocation);
-    
+
     this.setupRoutes();
   }
-  
+
   private extractIssuerPath(metadataLocation: string): string {
     // Handle different metadata location patterns
     if (metadataLocation.includes('/.well-known/oauth-authorization-server/')) {
@@ -87,7 +88,7 @@ export class MockAuthServer implements HttpTraceCollector {
     this.app.get(this.metadataLocation, (req: Request, res: Response) => {
       const baseUrl = this.getUrl();
       const issuer = baseUrl + this.issuerPath;
-      
+
       // Base metadata for both OAuth 2.0 and OIDC
       const metadata: any = {
         issuer: issuer,
@@ -99,7 +100,7 @@ export class MockAuthServer implements HttpTraceCollector {
         code_challenge_methods_supported: ['S256'],
         token_endpoint_auth_methods_supported: ['none', 'client_secret_post']
       };
-      
+
       // Add OIDC-specific fields if this is an OpenID Connect metadata endpoint
       if (this.metadataLocation.includes('openid-configuration')) {
         metadata.jwks_uri = `${baseUrl}/jwks`;
@@ -109,7 +110,7 @@ export class MockAuthServer implements HttpTraceCollector {
         metadata.scopes_supported = ['openid', 'profile', 'email'];
         metadata.claims_supported = ['sub', 'name', 'email', 'email_verified'];
       }
-      
+
       res.json(metadata);
     });
 
@@ -127,9 +128,7 @@ export class MockAuthServer implements HttpTraceCollector {
 
       // Track resource parameter
       if (resource) {
-        this.resourceParameterReceived = true;
-        this.resourceParameterValue = resource;
-        this.log('Received resource parameter:', resource);
+        this.authResourceParameter = resource;
       }
 
       // Basic validation
@@ -178,15 +177,10 @@ export class MockAuthServer implements HttpTraceCollector {
         refresh_token,
         resource
       } = req.body;
-      
+
       // Track resource parameter in token request
       if (resource) {
-        this.resourceParameterReceived = true;
-        // Update value if not already set or if different
-        if (!this.resourceParameterValue) {
-          this.resourceParameterValue = resource;
-        }
-        this.log('Received resource parameter in token request:', resource);
+        this.tokenResourceParameter = resource;
       }
 
       if (grant_type === 'authorization_code') {
