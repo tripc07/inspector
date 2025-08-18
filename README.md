@@ -61,6 +61,53 @@ CLIENT_PORT=8080 SERVER_PORT=9000 npx @modelcontextprotocol/inspector node build
 
 For more details on ways to use the inspector, see the [Inspector section of the MCP docs site](https://modelcontextprotocol.io/docs/tools/inspector). For help with debugging, see the [Debugging guide](https://modelcontextprotocol.io/docs/tools/debugging).
 
+### Using with Docker containers
+
+The MCP Inspector can connect to MCP servers running in Docker containers. You can use either the command-line approach or configuration files to set this up.
+
+#### Command-line approach
+
+To connect to a dockerized MCP server directly from the command line, use `docker` as the command and pass the container arguments:
+
+```bash
+npx @modelcontextprotocol/inspector docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN ghcr.io/github/github-mcp-server
+```
+
+#### Configuration file approach
+
+For more complex setups or repeated usage, create a configuration file. This approach is especially useful when you need to pass environment variables or multiple arguments:
+
+**Example config file (`config.json`):**
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "ghcr.io/github/github-mcp-server"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your_token_here"
+      }
+    }
+  }
+}
+```
+
+Then start the inspector using the configuration:
+
+```bash
+npx @modelcontextprotocol/inspector --config config.json --server github
+```
+
+This will populate the Inspector UI with the Docker command and arguments, allowing you to click the Connect button to establish the connection. The configuration approach also makes it easy to manage multiple dockerized servers or share configurations with team members.
+
 ### Servers File Export
 
 The MCP Inspector provides convenient buttons to export server launch configurations for use in clients such as Cursor, Claude Code, or the Inspector's CLI. The file is usually called `mcp.json`.
