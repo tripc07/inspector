@@ -399,6 +399,13 @@ app.get(
 
       await webAppTransport.start();
 
+      // Define cleanup function for when transports close
+      const cleanup = () => {
+        webAppTransports.delete(webAppTransport.sessionId);
+        serverTransports.delete(webAppTransport.sessionId);
+        console.log(`Cleaned up transports for sessionId ${webAppTransport.sessionId}`);
+      };
+
       (serverTransport as StdioClientTransport).stderr!.on("data", (chunk) => {
         if (chunk.toString().includes("MODULE_NOT_FOUND")) {
           // Server command not found, remove transports
@@ -469,6 +476,7 @@ app.get(
       mcpProxy({
         transportToClient: webAppTransport,
         transportToServer: serverTransport,
+        onCleanup: cleanup,
       });
     } catch (error) {
       console.error("Error in /stdio route:", error);
@@ -519,9 +527,17 @@ app.get(
 
         await webAppTransport.start();
 
+        // Define cleanup function for when transports close
+        const cleanup = () => {
+          webAppTransports.delete(webAppTransport.sessionId);
+          serverTransports.delete(webAppTransport.sessionId);
+          console.log(`Cleaned up transports for sessionId ${webAppTransport.sessionId}`);
+        };
+
         mcpProxy({
           transportToClient: webAppTransport,
           transportToServer: serverTransport,
+          onCleanup: cleanup,
         });
       }
     } catch (error) {
