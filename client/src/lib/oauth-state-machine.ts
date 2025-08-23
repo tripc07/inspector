@@ -14,6 +14,27 @@ import {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { generateOAuthState } from "@/utils/oauthUtils";
 
+/**
+ * Determines if the authorization server is Azure AD/Entra, which doesn't support the resource parameter
+ * @param metadata OAuth metadata containing authorization endpoint
+ * @returns true if the server appears to be Azure AD/Entra
+ */
+export const isAzureADEndpoint = (metadata: { authorization_endpoint?: string }): boolean => {
+  const authUrl = metadata.authorization_endpoint;
+  if (!authUrl) return false;
+  
+  // Check for common Azure AD/Entra endpoint patterns
+  const azurePatterns = [
+    /login\.microsoftonline\.com/,
+    /login\.microsoft\.com/,
+    /login\.live\.com/,
+    /\.b2clogin\.com/,
+    // Add more patterns as needed for other Azure AD variants
+  ];
+  
+  return azurePatterns.some(pattern => pattern.test(authUrl));
+};
+
 export interface StateMachineContext {
   state: AuthDebuggerState;
   serverUrl: string;
@@ -118,16 +139,25 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
         context.state.resourceMetadata ?? undefined,
       );
 
+      // Check if this is Azure AD/Entra which doesn't support the resource parameter
+      const isAzureAD = isAzureADEndpoint(metadata);
+      
+      const authParams: Parameters<typeof startAuthorization>[1] = {
+        metadata,
+        clientInformation,
+        redirectUrl: context.provider.redirectUrl,
+        scope,
+        state: generateOAuthState(),
+      };
+
+      // Only include the resource parameter if it's not Azure AD and we have a resource
+      if (!isAzureAD && context.state.resource) {
+        authParams.resource = context.state.resource;
+      }
+
       const { authorizationUrl, codeVerifier } = await startAuthorization(
         context.serverUrl,
-        {
-          metadata,
-          clientInformation,
-          redirectUrl: context.provider.redirectUrl,
-          scope,
-          state: generateOAuthState(),
-          resource: context.state.resource ?? undefined,
-        },
+        authParams,
       );
 
       context.provider.saveCodeVerifier(codeVerifier);
@@ -171,18 +201,25 @@ export const oauthTransitions: Record<OAuthStep, StateTransition> = {
       const metadata = context.provider.getServerMetadata()!;
       const clientInformation = (await context.provider.clientInformation())!;
 
-      const tokens = await exchangeAuthorization(context.serverUrl, {
+      // Check if this is Azure AD/Entra which doesn't support the resource parameter
+      const isAzureAD = isAzureADEndpoint(metadata);
+      
+      const tokenParams: Parameters<typeof exchangeAuthorization>[1] = {
         metadata,
         clientInformation,
         authorizationCode: context.state.authorizationCode,
         codeVerifier,
         redirectUri: context.provider.redirectUrl,
-        resource: context.state.resource
-          ? context.state.resource instanceof URL
-            ? context.state.resource
-            : new URL(context.state.resource)
-          : undefined,
-      });
+      };
+
+      // Only include the resource parameter if it's not Azure AD and we have a resource
+      if (!isAzureAD && context.state.resource) {
+        tokenParams.resource = context.state.resource instanceof URL
+          ? context.state.resource
+          : new URL(context.state.resource);
+      }
+
+      const tokens = await exchangeAuthorization(context.serverUrl, tokenParams);
 
       context.provider.saveTokens(tokens);
       context.updateState({
