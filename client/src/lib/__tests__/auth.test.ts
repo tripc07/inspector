@@ -1,4 +1,4 @@
-import { discoverScopes } from "../auth";
+import { discoverScopes, InspectorOAuthClientProvider } from "../auth";
 import { discoverAuthorizationServerMetadata } from "@modelcontextprotocol/sdk/client/auth.js";
 
 jest.mock("@modelcontextprotocol/sdk/client/auth.js", () => ({
@@ -152,4 +152,49 @@ describe("discoverScopes", () => {
       expect(result).toBeUndefined();
     },
   );
+});
+
+describe("InspectorOAuthClientProvider", () => {
+  const serverUrl = "https://test.server.com";
+  let provider: InspectorOAuthClientProvider;
+  
+  // Mock window.location
+  const mockLocation = {
+    origin: "http://localhost:6274"
+  };
+  
+  beforeEach(() => {
+    Object.defineProperty(window, 'location', {
+      value: mockLocation,
+      writable: true
+    });
+    
+    provider = new InspectorOAuthClientProvider(serverUrl);
+  });
+
+  describe("clientMetadata", () => {
+    test("uses window.location.origin as client_uri by default", () => {
+      const metadata = provider.clientMetadata;
+      
+      expect(metadata.client_uri).toBe("http://localhost:6274");
+      expect(metadata.redirect_uris).toEqual(["http://localhost:6274/oauth/callback"]);
+    });
+
+    // Note: Environment variable testing would require mocking import.meta.env
+    // For now, we test the default behavior which uses window.location.origin
+
+    test("includes expected metadata fields", () => {
+      const metadata = provider.clientMetadata;
+      
+      expect(metadata).toEqual({
+        redirect_uris: ["http://localhost:6274/oauth/callback"],
+        token_endpoint_auth_method: "none",
+        grant_types: ["authorization_code", "refresh_token"],
+        response_types: ["code"],
+        client_name: "MCP Inspector",
+        client_uri: "http://localhost:6274",
+        scope: "",
+      });
+    });
+  });
 });

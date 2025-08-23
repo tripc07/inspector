@@ -118,15 +118,33 @@ export class InspectorOAuthClientProvider implements OAuthClientProvider {
   }
 
   get clientMetadata(): OAuthClientMetadata {
-    return {
+    const getClientUri = (): string | undefined => {
+      const configValue = import.meta.env.VITE_OAUTH_CLIENT_URI || "origin";
+      
+      if (configValue === "origin") {
+        return window.location.origin;
+      } else if (configValue === "") {
+        return undefined;
+      } else {
+        return configValue;
+      }
+    };
+
+    const metadata: OAuthClientMetadata = {
       redirect_uris: [this.redirectUrl],
       token_endpoint_auth_method: "none",
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       client_name: "MCP Inspector",
-      client_uri: "https://github.com/modelcontextprotocol/inspector",
       scope: this.scope ?? "",
     };
+
+    const clientUri = getClientUri();
+    if (clientUri !== undefined) {
+      metadata.client_uri = clientUri;
+    }
+
+    return metadata;
   }
 
   state(): string | Promise<string> {
