@@ -145,7 +145,7 @@ export const OAuthFlowProgress = ({
                     From{" "}
                     {
                       new URL(
-                        "/.well-known/oauth-protected-resource",
+                        ".well-known/oauth-protected-resource",
                         serverUrl,
                       ).href
                     }
@@ -163,7 +163,7 @@ export const OAuthFlowProgress = ({
                     <a
                       href={
                         new URL(
-                          "/.well-known/oauth-protected-resource",
+                          ".well-known/oauth-protected-resource",
                           serverUrl,
                         ).href
                       }
@@ -173,7 +173,7 @@ export const OAuthFlowProgress = ({
                     >
                       {
                         new URL(
-                          "/.well-known/oauth-protected-resource",
+                          ".well-known/oauth-protected-resource",
                           serverUrl,
                         ).href
                       }
@@ -200,7 +200,7 @@ export const OAuthFlowProgress = ({
                       From{" "}
                       {
                         new URL(
-                          "/.well-known/oauth-authorization-server",
+                          ".well-known/oauth-authorization-server",
                           authState.authServerUrl,
                         ).href
                       }
