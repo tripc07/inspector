@@ -167,7 +167,7 @@ export function useConnection({
           // Add progress notification to `Server Notification` window in the UI
           if (onNotification) {
             onNotification({
-              method: "notification/progress",
+              method: "notifications/progress",
               params,
             });
           }
@@ -409,11 +409,20 @@ export function useConnection({
 
       let mcpProxyServerUrl;
       switch (transportType) {
-        case "stdio":
+        case "stdio": {
           mcpProxyServerUrl = new URL(`${getMCPProxyAddress(config)}/stdio`);
           mcpProxyServerUrl.searchParams.append("command", command);
           mcpProxyServerUrl.searchParams.append("args", args);
           mcpProxyServerUrl.searchParams.append("env", JSON.stringify(env));
+
+          const proxyFullAddress = config.MCP_PROXY_FULL_ADDRESS
+            .value as string;
+          if (proxyFullAddress) {
+            mcpProxyServerUrl.searchParams.append(
+              "proxyFullAddress",
+              proxyFullAddress,
+            );
+          }
           transportOptions = {
             authProvider: serverAuthProvider,
             eventSourceInit: {
@@ -431,10 +440,20 @@ export function useConnection({
             },
           };
           break;
+        }
 
-        case "sse":
+        case "sse": {
           mcpProxyServerUrl = new URL(`${getMCPProxyAddress(config)}/sse`);
           mcpProxyServerUrl.searchParams.append("url", sseUrl);
+
+          const proxyFullAddressSSE = config.MCP_PROXY_FULL_ADDRESS
+            .value as string;
+          if (proxyFullAddressSSE) {
+            mcpProxyServerUrl.searchParams.append(
+              "proxyFullAddress",
+              proxyFullAddressSSE,
+            );
+          }
           transportOptions = {
             eventSourceInit: {
               fetch: (
@@ -451,6 +470,7 @@ export function useConnection({
             },
           };
           break;
+        }
 
         case "streamable-http":
           mcpProxyServerUrl = new URL(`${getMCPProxyAddress(config)}/mcp`);
@@ -579,6 +599,15 @@ export function useConnection({
       if (capabilities?.logging && defaultLoggingLevel) {
         lastRequest = "logging/setLevel";
         await client.setLoggingLevel(defaultLoggingLevel);
+        pushHistory(
+          {
+            method: "logging/setLevel",
+            params: {
+              level: defaultLoggingLevel,
+            },
+          },
+          {},
+        );
         lastRequest = "";
       }
 
@@ -624,11 +653,16 @@ export function useConnection({
     setServerCapabilities(null);
   };
 
+  const clearRequestHistory = () => {
+    setRequestHistory([]);
+  };
+
   return {
     connectionStatus,
     serverCapabilities,
     mcpClient,
     requestHistory,
+    clearRequestHistory,
     makeRequest,
     sendNotification,
     handleCompletion,
