@@ -436,6 +436,12 @@ export function useConnection({
           mcpProxyServerUrl = new URL(`${getMCPProxyAddress(config)}/stdio`);
           mcpProxyServerUrl.searchParams.append("command", command);
           mcpProxyServerUrl.searchParams.append("args", args);
+          // Send args as JSON array to avoid Windows path issues
+          const argsArray = args.trim() ? args.split(/\s+/) : [];
+          mcpProxyServerUrl.searchParams.append(
+            "argsJson",
+            JSON.stringify(argsArray),
+          );
           mcpProxyServerUrl.searchParams.append("env", JSON.stringify(env));
 
           const proxyFullAddress = config.MCP_PROXY_FULL_ADDRESS

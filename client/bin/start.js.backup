@@ -104,7 +104,7 @@ async function startProdServer(serverOptions) {
       inspectorServerPath,
       ...(command ? [`--command=${command}`] : []),
       ...(mcpServerArgs && mcpServerArgs.length > 0
-        ? [`--args-json=${JSON.stringify(mcpServerArgs)}`]
+        ? [`--args=${mcpServerArgs.join(" ")}`]
         : []),
       ...(transport ? [`--transport=${transport}`] : []),
       ...(serverUrl ? [`--server-url=${serverUrl}`] : []),
